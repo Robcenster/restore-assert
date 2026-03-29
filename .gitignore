@@ -1,0 +1,6 @@
+.env
+go.mod
+go.sum
+backups
+README.md
+ДокаБэкапов.md

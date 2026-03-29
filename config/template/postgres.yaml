@@ -1,18 +1,16 @@
 # Настройки Docker контейнера
 docker:
-  image: "postgres:15-alpine"
+  image: "postgres:17-alpine"
   container_name: "restore-assert-pg"
   memory_limit: "1GB"      # Ограничение ресурсов (чтобы тест не съел весь RAM)
   cpu_limit: "1.0"         # Сколько ядер выделить
   wait_timeout: "60s"      # Сколько ждать готовности базы
-  auto_remove: false        # Удалять контейнер после завершения
 
 # Настройки самой СУБД (Postgres Tuning)
 database:
   db_name: "restore_test"
   user: "postgres"
   password: "password"
-  # config_file: "./testdata/my-postgres.conf" # Раскомментировать, если нужен файл
   extensions:              # Список расширений, которые нужно поставить ДО дампа
     - "uuid-ossp"
     - "pgcrypto"
@@ -26,3 +24,14 @@ database:
                            # Временному контейнеру всё равно на сбои, а скорость +200%
     shared_buffers: "256MB"
     work_mem: "64MB"
+    # Параметр оставления бд на диске или нет
+    
+# Параметры восстановления (Restore)
+restore:
+  format: "custom"         # plain, custom, directory нужен для определения типа файла (возможно можно сделать автоматически)
+  parallel_jobs: 4         # Сколько потоков использовать (для pg_restore)
+  analyze: true            # Обновить статистику (твой запрос)
+  on_error_stop: false     # Продолжать при ошибках (твой запрос)
+  single_transaction: false # Транзакционность (твой запрос)
+  no_owner: true           # Игнорировать владельцев (чтобы не было ошибок ролей)
+  no_privileges: true      # Игнорировать права (GRANT/REVOKE)
