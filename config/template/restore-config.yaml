@@ -1,0 +1,43 @@
+# DBType: postgres/mssql/oracle etc
+engine: "postgres"
+
+docker:
+  image: "postgres:15-alpine"
+
+  #TODO: maybe just generate always?
+  container_name: "restore-assert-vp"
+
+  memory_limit: "512MB"
+  cpu_limit: "1.0"
+  auto_remove: false
+
+database:
+  #TODO: maybe generate as well?
+  db_name: "recovery_test"
+  user: "qa_bot"
+  password: "very_secret_password"
+  #TODO: doesnt they come in dump as well? need to check
+  extensions:
+    - "uuid-ossp"
+    - "pg_stat_statements"
+    
+  # Кастомные настройки postgresql.conf (через флаги -c)
+  settings:
+    max_connections: "50"
+    shared_buffers: "128MB"
+    fsync: "off"
+
+# TODO: deep dark analysis, very deep
+validation:
+  tests:
+    - name: "Minimum users threshold"
+      query: "SELECT count(*) FROM users WHERE active = true;"
+      expected: "100"
+      
+    - name: "Verify last transaction date"
+      query: "SELECT EXISTS (SELECT 1 FROM transactions WHERE created_at > now() - interval '1 day');"
+      expected: "true"
+      
+    - name: "Check critical table exists"
+      query: "SELECT count(*) FROM information_schema.tables WHERE table_name = 'orders';"
+      expected: "1"

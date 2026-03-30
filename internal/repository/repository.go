@@ -1,30 +1,13 @@
-// Интерфейс для Assert-ов
 package repository
 
 import (
 	"context"
-	"fmt"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type storage struct {
-	Pool *pgxpool.Pool
-}
-
-func New(ctx context.Context, connString string) (*storage, error) {
-	pool, err := pgxpool.New(ctx, connString)
-	if err != nil {
-		return nil, fmt.Errorf("unable to create connection pool: %w", err)
-	}
-
-	if err := pool.Ping(ctx); err != nil {
-		return nil, fmt.Errorf("unable to ping database: %w", err)
-	}
-
-	return &storage{Pool: pool}, nil
-}
-
-func (s *storage) Close() {
-	s.Pool.Close()
+// DBRepository описывает контракт для выполнения SQL-проверок.
+// Любая база данных (Postgres, MSSQL и т.д.) обязана уметь это делать.
+type DBRepository interface {
+	// GetDatabaseInfo выводит отладочную информацию о структуре базы
+	GetDatabaseInfo(ctx context.Context) error
+	Close()
 }
