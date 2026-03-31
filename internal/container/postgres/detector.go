@@ -19,7 +19,7 @@ const (
 )
 
 // DetectBackupType определяет формат файла дампа PostgreSQL
-func DetectBackupType(dumpPath string) (BackupType, error) {
+func detectBackupType(dumpPath string) (BackupType, error) {
 	info, err := os.Stat(dumpPath)
 	if err != nil {
 		return TypeUnknown, err
@@ -42,7 +42,7 @@ func DetectBackupType(dumpPath string) (BackupType, error) {
 	if err != nil && err != io.EOF {
 		return TypeUnknown, err // Ловим реальные ошибки чтения
 	}
-	
+
 	if n == 0 {
 		return TypeUnknown, nil // Файл абсолютно пуст
 	}
