@@ -1,37 +1,11 @@
 package postgres
 
 import (
-	"context"
-	"fmt"
 	"io"
 	"os"
 	"strings"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type storage struct {
-	Pool *pgxpool.Pool
-}
-
-func New(ctx context.Context, connString string) (*storage, error) {
-	pool, err := pgxpool.New(ctx, connString)
-	if err != nil {
-		return nil, fmt.Errorf("unable to create connection pool: %w", err)
-	}
-
-	if err := pool.Ping(ctx); err != nil {
-		return nil, fmt.Errorf("unable to ping database: %w", err)
-	}
-
-	return &storage{Pool: pool}, nil
-}
-
-func (s *storage) Close() {
-	s.Pool.Close()
-}
-
-// СТОИТ ПЕРЕНЕСТИ ОТСЮДА ЭТУ ЛОГИКУ
 type BackupType string
 
 const (
@@ -45,8 +19,8 @@ const (
 )
 
 // DetectBackupType определяет формат файла дампа PostgreSQL
-func DetectBackupType(path string) (BackupType, error) {
-	info, err := os.Stat(path)
+func detectBackupType(dumpPath string) (BackupType, error) {
+	info, err := os.Stat(dumpPath)
 	if err != nil {
 		return TypeUnknown, err
 	}
@@ -56,7 +30,7 @@ func DetectBackupType(path string) (BackupType, error) {
 		return TypeDirectory, nil
 	}
 
-	f, err := os.Open(path)
+	f, err := os.Open(dumpPath)
 	if err != nil {
 		return TypeUnknown, err
 	}
@@ -68,6 +42,7 @@ func DetectBackupType(path string) (BackupType, error) {
 	if err != nil && err != io.EOF {
 		return TypeUnknown, err // Ловим реальные ошибки чтения
 	}
+
 	if n == 0 {
 		return TypeUnknown, nil // Файл абсолютно пуст
 	}
