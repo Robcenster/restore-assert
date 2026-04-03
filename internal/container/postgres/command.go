@@ -14,6 +14,13 @@ func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType Backu
 		return nil, errors.New("container path cannot be empty")
 	}
 
+	// Если это не дамп всего кластера, требуем данные для подключения из конфига
+	if bType != TypeDumpAll {
+		if dbCfg.User == "" || dbCfg.DBName == "" {
+			return nil, errors.New("restore error: database user and name must be set")
+		}
+	}
+
 	var cmd []string
 
 	switch bType {
