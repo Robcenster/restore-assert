@@ -42,13 +42,13 @@ type Database struct {
 }
 
 type Restore struct {
-	Format            string `yaml:"format" env-default:"auto"`
-	Analyze           bool   `yaml:"analyze" env-default:"true"`
-	OnErrorStop       bool   `yaml:"on_error_stop" env-default:"false"`
-	SingleTransaction bool   `yaml:"single_transaction" env-default:"false"`
-	ParallelJobs      int    `yaml:"parallel_jobs" env-default:"1"`
-	NoOwner           bool   `yaml:"no_owner" env-default:"true"`
-	NoPrivileges      bool   `yaml:"no_privileges" env-default:"true"`
+	Analyze           bool `yaml:"analyze" env-default:"true"`
+	FullRestoreLogs   bool `yaml:"full_restore_logs"`
+	OnErrorStop       bool `yaml:"on_error_stop"`
+	SingleTransaction bool `yaml:"single_transaction"`
+	ParallelJobs      int  `yaml:"parallel_jobs" env-default:"1"`
+	NoOwner           bool `yaml:"no_owner"`
+	NoPrivileges      bool `yaml:"no_privileges"`
 }
 
 func Load(path string) (*Config, error) {
