@@ -27,6 +27,16 @@ database:
     shared_buffers: "128MB"
     fsync: "off"
 
+# Параметры восстановления (Restore)
+restore:
+  parallel_jobs: 1         # Сколько потоков использовать (для pg_restore)
+  analyze: true            # Обновить статистику (желательно делать в конце восстановления)
+  on_error_stop: false     # Продолжать при ошибках (твой запрос)
+  single_transaction: false # Транзакционность (твой запрос)
+  no_owner: false           # Игнорировать владельцев (чтобы не было ошибок ролей)
+  no_privileges: false      # Игнорировать права (GRANT/REVOKE)
+  full_restore_logs: false  # Не работает
+
 # TODO: deep dark analysis, very deep
 validation:
   tests:

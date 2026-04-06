@@ -30,7 +30,11 @@ func (p *Pipeline) RunCheck(ctx context.Context, backupPath string) error {
 
 	fmt.Println("🚀 Шаг 2: Подключаемся к базе и собираем информацию...")
 
-	if err := p.repo.GetDatabaseInfo(ctx); err != nil {
+	// Получаем DSN от провайдера контейнера
+	baseConnStr := p.cp.GetConnectionString()
+
+	// Передаем DSN в репозиторий для динамического обхода
+	if err := p.repo.GetDatabaseInfo(ctx, baseConnStr); err != nil {
 		return fmt.Errorf("ошибка при получении инфы о БД: %w", err)
 	}
 

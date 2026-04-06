@@ -8,6 +8,6 @@ import (
 // Любая база данных (Postgres, MSSQL и т.д.) обязана уметь это делать.
 type DBRepository interface {
 	// GetDatabaseInfo выводит отладочную информацию о структуре базы
-	GetDatabaseInfo(ctx context.Context) error
+	GetDatabaseInfo(ctx context.Context, baseConnStr string) error
 	Close()
 }
