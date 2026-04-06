@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -36,45 +37,76 @@ func (r *Repository) Close() {
 	}
 }
 
-// GetDatabaseInfo делает тестовые запросы и выводит структуру БД.
-// Твой отличный метод без изменений, просто адаптирован под структуру Repository!
-func (r *Repository) GetDatabaseInfo(ctx context.Context) error {
-	var dbName string
-	err := r.pool.QueryRow(ctx, "SELECT current_database()").Scan(&dbName)
-	if err != nil {
-		return fmt.Errorf("failed to get db name: %w", err)
-	}
+func (r *Repository) GetDatabaseInfo(ctx context.Context, baseConnStr string) error {
+	fmt.Println("\n======================================")
+	fmt.Println("   ПОЛНАЯ ИНФОРМАЦИЯ О КЛАСТЕРЕ       ")
+	fmt.Println("======================================")
 
-	fmt.Printf("\n=== Информация о базе данных ===\n")
-	fmt.Printf("Подключено к БД: %s\n", dbName)
-
-	query := `
-		SELECT table_name 
-		FROM information_schema.tables 
-		WHERE table_schema = 'public' 
-		ORDER BY table_name;
-	`
-	rows, err := r.pool.Query(ctx, query)
-	if err != nil {
-		return fmt.Errorf("failed to fetch tables: %w", err)
-	}
-	defer rows.Close()
-
-	fmt.Println("Таблицы (схема 'public'):")
-	count := 0
+	// 1. Выводим роли (используем текущий r.pool)
+	fmt.Println("👥 Роли и пользователи:")
+	roleQuery := "SELECT rolname, rolsuper FROM pg_roles WHERE rolname NOT LIKE 'pg_%'"
+	rows, _ := r.pool.Query(ctx, roleQuery)
 	for rows.Next() {
-		var tableName string
-		if err := rows.Scan(&tableName); err != nil {
-			return err
-		}
-		fmt.Printf(" - %s\n", tableName)
-		count++
+		var name string
+		var isSuper bool
+		rows.Scan(&name, &isSuper)
+		fmt.Printf(" - %s (Superuser: %v)\n", name, isSuper)
 	}
+	rows.Close()
 
-	if count == 0 {
-		fmt.Println(" (Таблиц не найдено)")
+	// 2. Получаем список всех БД
+	var dbNames []string
+	dbQuery := "SELECT datname FROM pg_database WHERE datistemplate = false AND datname != 'rdsadmin'"
+	dbRows, err := r.pool.Query(ctx, dbQuery)
+	if err != nil {
+		return err
 	}
-	fmt.Printf("================================\n\n")
+	for dbRows.Next() {
+		var name string
+		dbRows.Scan(&name)
+		dbNames = append(dbNames, name)
+	}
+	dbRows.Close()
+
+	// 3. Инспектируем каждую БД
+	for _, name := range dbNames {
+		fmt.Printf("\n--- 🗄️ База: %s ---\n", name)
+
+		// Формируем DSN для конкретной базы
+		u, _ := url.Parse(baseConnStr)
+		u.Path = "/" + name
+
+		// Создаем временный пул для этой базы
+		tempPool, err := pgxpool.New(ctx, u.String())
+		if err != nil {
+			fmt.Printf(" [!] Ошибка подключения: %v\n", err)
+			continue
+		}
+
+		// Выводим таблицы
+		tableQuery := `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
+		tRows, err := tempPool.Query(ctx, tableQuery)
+		if err != nil {
+			fmt.Printf(" [!] Ошибка запроса таблиц: %v\n", err)
+			tempPool.Close()
+			continue
+		}
+
+		count := 0
+		for tRows.Next() {
+			var tName string
+			tRows.Scan(&tName)
+			fmt.Printf("  📑 Таблица: %s\n", tName)
+			count++
+		}
+		tRows.Close()
+
+		if count == 0 {
+			fmt.Println("  (таблиц нет)")
+		}
+
+		tempPool.Close() // Обязательно закрываем временный пул
+	}
 
 	return nil
 }
