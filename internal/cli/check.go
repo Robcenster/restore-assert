@@ -9,56 +9,48 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// restore-assert check
 func NewCheckCmd() *cobra.Command {
 	var cfgFile string
 
 	checkCmd := &cobra.Command{
 		Use:   "check [path/to/backup.sql]",
-		Short: "Запустить валидацию бэкапа",
+		Short: "Check database dump",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			backupPath := args[0]
 			ctx := cmd.Context()
 
-			// 1. Загружаем конфиг
 			cfg, err := config.Load(cfgFile)
 			if err != nil {
-				return fmt.Errorf("ошибка загрузки конфига: %w", err)
+				return fmt.Errorf("loading config error: %v", err)
 			}
 
-			// 2. Используем ФАБРИКУ для создания нужных компонентов.
 			containerProvider, err := factory.NewContainerProvider(cfg)
 			if err != nil {
-				return fmt.Errorf("failed to create container provider: %w", err)
+				return fmt.Errorf("failed to create container provider: %v", err)
 			}
 
-			// Запускаем контейнер (это нужно сделать ДО создания репозитория)
 			err = containerProvider.Start(ctx)
 			if err != nil {
-				return fmt.Errorf("failed to start container: %w", err)
+				return fmt.Errorf("failed to start container: %v", err)
 			}
 			defer containerProvider.Stop(ctx)
 
 			dbRepo, err := factory.NewRepository(ctx, cfg, containerProvider)
 			if err != nil {
-				return fmt.Errorf("failed to create repository: %w", err)
+				return fmt.Errorf("failed to create repository: %v", err)
 			}
 
-			// 3. Создаем оркестратор (Пайплайн) и передаем ему "чистые" интерфейсы
-			pipeline := app.NewPipeline(containerProvider, dbRepo)
+			pipeline := app.NewPipeline(containerProvider, dbRepo, cfg)
 
-			// 4. Запускаем весь процесс
 			if err := pipeline.RunCheck(ctx, backupPath); err != nil {
-				return fmt.Errorf("проверка провалилась: %w", err)
+				return fmt.Errorf("проверка провалилась: %v", err)
 			}
-
-			fmt.Println("✨ Проверка успешно завершена!")
 			return nil
 		},
 	}
 
-	checkCmd.Flags().StringVarP(&cfgFile, "config", "c", "restore-config.yaml", "Путь к файлу конфигурации")
+	checkCmd.Flags().StringVarP(&cfgFile, "config", "c", "restore-config.yaml", "Configuration path")
 
 	return checkCmd
 }

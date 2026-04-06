@@ -2,12 +2,13 @@ package repository
 
 import (
 	"context"
+
+	"github.com/Robcenster/restore-assert/internal/formatter"
 )
 
-// DBRepository описывает контракт для выполнения SQL-проверок.
-// Любая база данных (Postgres, MSSQL и т.д.) обязана уметь это делать.
 type DBRepository interface {
-	// GetDatabaseInfo выводит отладочную информацию о структуре базы
-	GetDatabaseInfo(ctx context.Context, baseConnStr string) error
+	ExecuteQuery(ctx context.Context, query string) (string, error)
+	InitializeEnvironment(ctx context.Context, roles []string, extensions []string) error
+	GetDatabaseInfo(ctx context.Context) (map[string][]formatter.DbObject, error)
 	Close()
 }

@@ -4,39 +4,77 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Robcenster/restore-assert/internal/config"
 	"github.com/Robcenster/restore-assert/internal/container"
+	"github.com/Robcenster/restore-assert/internal/formatter"
 	"github.com/Robcenster/restore-assert/internal/repository"
+	"github.com/Robcenster/restore-assert/internal/verifier"
 )
 
 type Pipeline struct {
-	cp   container.Provider
-	repo repository.DBRepository
+	container container.Provider
+	repo      repository.DBRepository
+	cfg       *config.Config
+	verifier  *verifier.Verifier
 }
 
-func NewPipeline(cp container.Provider, repo repository.DBRepository) *Pipeline {
+func NewPipeline(ct container.Provider, repo repository.DBRepository, cfg *config.Config) *Pipeline {
 	return &Pipeline{
-		cp:   cp,
-		repo: repo,
+		container: ct,
+		repo:      repo,
+		cfg:       cfg,
+		verifier:  verifier.NewVerifier(repo),
 	}
 }
 
 func (p *Pipeline) RunCheck(ctx context.Context, backupPath string) error {
-	fmt.Println("🚀 Шаг 1: Начинаем заливку бэкапа в контейнер...")
-
-	if err := p.cp.ExecuteRestore(ctx, backupPath); err != nil {
-		return fmt.Errorf("ошибка при восстановлении базы: %w", err)
-	}
-	fmt.Println("✅ База успешно восстановлена!")
-
-	fmt.Println("🚀 Шаг 2: Подключаемся к базе и собираем информацию...")
-
-	// Получаем DSN от провайдера контейнера
-	baseConnStr := p.cp.GetConnectionString()
-
-	// Передаем DSN в репозиторий для динамического обхода
-	if err := p.repo.GetDatabaseInfo(ctx, baseConnStr); err != nil {
-		return fmt.Errorf("ошибка при получении инфы о БД: %w", err)
+	if err := p.repo.InitializeEnvironment(ctx, p.cfg.Database.Roles, p.cfg.Database.Extensions); err != nil {
+		return fmt.Errorf("roles and extensions create error: %w", err)
 	}
 
+	fmt.Println("⏳ [Step 1/3] Restoring database...")
+	if err := p.container.ExecuteRestore(ctx, backupPath); err != nil {
+		return fmt.Errorf("restoring database error: %w", err)
+	}
+
+	fmt.Println("📊 [Step 2/3] Database restored:")
+	if p.cfg.Output.ShowDatabaseInfo {
+		dbStructure, err := p.repo.GetDatabaseInfo(ctx)
+		if err != nil {
+			return fmt.Errorf("getting database info error: %w", err)
+		}
+
+		formatter.PrintDatabaseStructure(dbStructure)
+	}
+
+	if len(p.cfg.Asserts) == 0 {
+		fmt.Println("ℹ️ [Step 3/3] No logic tests in config file")
+		return nil
+	}
+
+	fmt.Println("🧪 [Step 3/3] Running assertions...")
+	failedAssertCount := 0
+
+	for _, assert := range p.cfg.Asserts {
+		success, err := p.verifier.RunAssert(ctx, assert)
+		if err != nil && !success {
+			fmt.Printf("❌ Error executing assert '%s': %v\n", assert.Name, err)
+			failedAssertCount++
+			continue
+		}
+		if !success {
+			fmt.Printf("❌ Assert failed: %s\n", assert.Name)
+			failedAssertCount++
+		} else {
+			if !p.cfg.Output.HideSuccessTests {
+				fmt.Printf("✅ Assert passed: %s\n", assert.Name)
+			}
+		}
+	}
+
+	if failedAssertCount > 0 {
+		return fmt.Errorf("total failed asserts: %d", failedAssertCount)
+	}
+	fmt.Println("✅ All asserts completed successfully!")
 	return nil
 }
