@@ -4,6 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
+	"os"
+	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/Robcenster/restore-assert/internal/config"
@@ -68,47 +72,81 @@ func (p *PostgresContainer) Start(ctx context.Context) error {
 
 // ExecuteRestore делает всю грязную работу по заливке бэкапа
 func (p *PostgresContainer) ExecuteRestore(ctx context.Context, hostFilePath string) error {
-	containerPath := "/tmp/dump_to_restore"
+	// 1. Предварительная проверка на хосте
+	absPath, err := filepath.Abs(hostFilePath)
+	if err != nil {
+		return fmt.Errorf("invalid host path: %w", err)
+	}
 
-	// 1. Детектим тип бэкапа
-	bType, err := detectBackupType(hostFilePath)
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		return fmt.Errorf("backup file not found: %s", absPath)
+	}
+
+	// Формируем безопасные пути
+	baseName := filepath.Base(absPath)
+	containerPath := path.Join("/tmp", baseName)
+
+	// 2. Детектим тип бэкапа
+	bType, err := detectBackupType(absPath)
 	if err != nil {
 		return fmt.Errorf("backup detection failed: %w", err)
 	}
 
-	// 2. Копируем файл с хоста в контейнер
-	if err := p.container.CopyFileToContainer(ctx, hostFilePath, containerPath, 0644); err != nil {
-		return fmt.Errorf("failed to copy dump to container: %w", err)
+	// 3. Копирование данных
+	// Используем switch только для выбора метода, логику обработки ошибок выносим вниз
+	var copyErr error
+	switch bType {
+	case TypeDirectory:
+		copyErr = p.container.CopyDirToContainer(ctx, absPath, containerPath, 0755)
+	case TypeCustom, TypeTar, TypePlain, TypeDumpAll:
+		copyErr = p.container.CopyFileToContainer(ctx, absPath, containerPath, 0644)
+	default:
+		return fmt.Errorf("unsupported backup type: %s", bType)
 	}
 
-	// 3. Если это не DumpAll, создаем роли и экстеншены ПЕРЕД накатыванием данных
-	if bType != "dumpall" {
+	if copyErr != nil {
+		return fmt.Errorf("failed to transfer %s to container: %w", bType, copyErr)
+	}
+
+	// ГАРАНТИРОВАННАЯ ОЧИСТКА: Удаляем файл/папку из контейнера после завершения функции
+	// Это важно, если контейнер живет долго (например, во время запуска пачки тестов)
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		p.container.Exec(cleanupCtx, []string{"rm", "-rf", containerPath})
+	}()
+
+	// 4. Подготовка схемы (если нужно)
+	if bType != TypeDumpAll {
 		if err := p.initDatabaseSchema(ctx); err != nil {
-			return fmt.Errorf("failed to init pre-restore schema: %w", err)
+			return fmt.Errorf("schema init failed: %w", err)
 		}
 	}
 
-	// 4. Формируем команду (psql или pg_restore)
+	// 5. Формирование и запуск команды
 	cmd, err := buildRestoreCommand(p.cfg.Database, p.cfg.Restore, bType, containerPath)
 	if err != nil {
 		return err
 	}
 
-	// 5. Запускаем команду внутри контейнера
 	exitCode, reader, err := p.container.Exec(ctx, cmd)
 	if err != nil {
-		return fmt.Errorf("failed to execute restore command: %w", err)
+		return fmt.Errorf("exec failed: %w", err)
 	}
 
-	outputBytes, _ := io.ReadAll(reader)
+	// БЕЗОПАСНОЕ ЧТЕНИЕ ЛОГОВ: Ограничиваем размер, чтобы не упасть по OOM
+	// если дамп выдаст миллион ворнингов
+	const maxLogSize = 1 * 1024 * 1024 // 1MB
+	outputBytes, _ := io.ReadAll(io.LimitReader(reader, maxLogSize))
 	output := string(outputBytes)
 
-	if len(output) > 0 {
-		fmt.Printf("\n--- [RESTORE LOGS] ---\n%s\n------------------\n", output)
+	if exitCode != 0 {
+		return fmt.Errorf("restore failed (code %d). Logs:\n%s", exitCode, output)
 	}
 
-	if exitCode != 0 {
-		return fmt.Errorf("restore command failed with exit code: %d", exitCode)
+	if len(output) > 0 {
+		// Используем логгер вместо fmt для гибкости
+		log.Printf("Restore logs for %s:\n%s", baseName, output)
 	}
 
 	return nil
