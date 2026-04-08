@@ -47,10 +47,10 @@ func (p *Pipeline) RunCheck(ctx context.Context, backupPath string) error {
 		formatter.PrintDatabaseStructure(dbStructure)
 	}
 
-	if len(p.cfg.Asserts) == 0 {
-		fmt.Println("ℹ️ [Step 3/3] No logic tests in config file")
-		return nil
-	}
+	// if len(p.cfg.Asserts) == 0 {
+	// 	fmt.Println("ℹ️ [Step 3/3] No logic tests in config file")
+	// 	return nil
+	// }
 
 	fmt.Println("🧪 [Step 3/3] Running asserts...")
 	failedAssertCount := 0

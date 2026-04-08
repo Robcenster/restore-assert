@@ -19,3 +19,4 @@ go.work.sum
 
 # Editor/IDE
 .idea/
+backups/

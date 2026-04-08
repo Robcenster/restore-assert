@@ -34,72 +34,72 @@ type AssertTask struct {
 }
 
 // CreateTasks преобразует вложенный конфиг YAML в плоский список задач для Pipeline
-func (v *Verifier) CreateTasks(assertBlocks []config.Asserts) []AssertTask {
+func (v *Verifier) CreateTasks(asserts config.Asserts) []AssertTask {
 	var tasks []AssertTask
 
-	for _, block := range assertBlocks {
-		// 1. Быстрые проверки существования
-		for _, ext := range block.Existence.Extensions {
-			tasks = append(tasks, AssertTask{Name: "Extension: " + ext, Type: "existence_ext", Target: ext})
-		}
-		for _, role := range block.Existence.Roles {
-			tasks = append(tasks, AssertTask{Name: "Role: " + role, Type: "existence_role", Target: role})
-		}
-		for _, schema := range block.Existence.Schemas {
-			tasks = append(tasks, AssertTask{Name: "Schema: " + schema, Type: "existence_schema", Target: schema})
-		}
 
-		// 2. Метрики таблиц
-		for _, t := range block.Tables {
-			for _, m := range t.Metrics {
-				tasks = append(tasks, AssertTask{
-					Name:       fmt.Sprintf("Table %s [%s]", t.Name, m.Type),
-					Type:       m.Type,
-					Target:     t.Name,
-					Condition:  m.Condition,
-					Expected:   m.Expected,
-					Column:     m.Column,
-					MaxAge:     m.MaxAge,
-					MaxPercent: m.MaxPercent,
-				})
-			}
-		}
+	// 1. Быстрые проверки существования
+	for _, ext := range asserts.Existence.Extensions {
+		tasks = append(tasks, AssertTask{Name: "Extension: " + ext, Type: "existence_ext", Target: ext})
+	}
+	for _, role := range asserts.Existence.Roles {
+		tasks = append(tasks, AssertTask{Name: "Role: " + role, Type: "existence_role", Target: role})
+	}
+	for _, schema := range asserts.Existence.Schemas {
+		tasks = append(tasks, AssertTask{Name: "Schema: " + schema, Type: "existence_schema", Target: schema})
+	}
 
-		// 3. Права доступа (Privileges)
-		for _, p := range block.Privileges {
-			for _, allowed := range p.Allowed {
-				tasks = append(tasks, AssertTask{
-					Name:      fmt.Sprintf("Privilege: %s can %s on %s", p.Role, allowed, p.Table),
-					Type:      "privilege",
-					Target:    p.Table,
-					Role:      p.Role,
-					Action:    allowed,
-					IsAllowed: true,
-				})
-			}
-			for _, forbidden := range p.Forbidden {
-				tasks = append(tasks, AssertTask{
-					Name:      fmt.Sprintf("Privilege: %s CANNOT %s on %s", p.Role, forbidden, p.Table),
-					Type:      "privilege",
-					Target:    p.Table,
-					Role:      p.Role,
-					Action:    forbidden,
-					IsAllowed: false,
-				})
-			}
-		}
-
-		// 4. Кастомные запросы
-		for _, q := range block.Queries {
+	// 2. Метрики таблиц
+	for _, t := range asserts.Tables {
+		for _, m := range t.Metrics {
 			tasks = append(tasks, AssertTask{
-				Name:      "Query: " + q.Name,
-				Type:      "query",
-				Query:     q.Query,
-				Condition: q.Condition,
-				Expected:  q.Expected,
+				Name:       fmt.Sprintf("Table %s [%s]", t.Name, m.Type),
+				Type:       m.Type,
+				Target:     t.Name,
+				Condition:  m.Condition,
+				Expected:   m.Expected,
+				Column:     m.Column,
+				MaxAge:     m.MaxAge,
+				MaxPercent: m.MaxPercent,
 			})
 		}
 	}
+
+	// 3. Права доступа (Privileges)
+	for _, p := range asserts.Privileges {
+		for _, allowed := range p.Allowed {
+			tasks = append(tasks, AssertTask{
+				Name:      fmt.Sprintf("Privilege: %s can %s on %s", p.Role, allowed, p.Table),
+				Type:      "privilege",
+				Target:    p.Table,
+				Role:      p.Role,
+				Action:    allowed,
+				IsAllowed: true,
+			})
+		}
+		for _, forbidden := range p.Forbidden {
+			tasks = append(tasks, AssertTask{
+				Name:      fmt.Sprintf("Privilege: %s CANNOT %s on %s", p.Role, forbidden, p.Table),
+				Type:      "privilege",
+				Target:    p.Table,
+				Role:      p.Role,
+				Action:    forbidden,
+				IsAllowed: false,
+			})
+		}
+	}
+
+	// 4. Кастомные запросы
+	for _, q := range asserts.Queries {
+		tasks = append(tasks, AssertTask{
+			Name:      "Query: " + q.Name,
+			Type:      "query",
+			Query:     q.Query,
+			Condition: q.Condition,
+			Expected:  q.Expected,
+		})
+	}
+
 
 	return tasks
 }

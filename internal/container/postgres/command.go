@@ -138,7 +138,6 @@ func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType Backu
 	default:
 		return nil, fmt.Errorf("unsupported backup type: %s", bType)
 	}
-	fmt.Printf("⚠️ dasdsa %s", cmd)
 
 	return cmd, nil
 }

@@ -29,8 +29,8 @@ restore:
   single_transaction: false # Транзакционность (твой запрос)
   no_owner: true           # Игнорировать владельцев (чтобы не было ошибок ролей)
   no_privileges: true      # Игнорировать права (GRANT/REVOKE)
-  full_restore_logs: false
-  show_db_info: false
+  full_restore_logs: true
+  show_db_info: true
   hide_success_tests: false
 
 
@@ -38,10 +38,10 @@ restore:
 asserts:
 
   # 1. Быстрые проверки существования
-  existence:
-    extensions: ["uuid-ossp", "pg_stat_statements"]
-    roles: ["app_writer", "app_readonly"]
-    schemas: ["public", "audit"]
+  # existence:
+  #   extensions: ["uuid-ossp", "pg_stat_statements"]
+  #   roles: ["app_writer", "app_readonly"]
+  #   schemas: ["public", "audit"]
 
 
   # 2. Целостность таблиц, проверяем физические показатели и наполненность

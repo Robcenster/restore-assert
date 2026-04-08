@@ -19,7 +19,7 @@ type Config struct {
 	Docker   Docker     `yaml:"docker"`
 	Database Database   `yaml:"database"`
 	Restore  Restore    `yaml:"restore"`
-	Asserts  []Asserts  `yaml:"asserts"`
+	Asserts  Asserts  `yaml:"asserts"`
 }
 
 type Docker struct {
