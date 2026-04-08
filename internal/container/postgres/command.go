@@ -9,6 +9,7 @@ import (
 	"github.com/Robcenster/restore-assert/internal/config"
 )
 
+// TODO: Почистить комменты, заменить константы на const, убрать русский
 func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType BackupType, containerPath string) ([]string, error) {
 	if containerPath == "" {
 		return nil, errors.New("container path cannot be empty")

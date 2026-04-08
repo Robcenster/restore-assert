@@ -18,6 +18,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+// TODO: Почистить комменты, заменить константы на const, убрать русский
 type PostgresContainer struct {
 	cfg       *config.Config
 	container *pgmod.PostgresContainer

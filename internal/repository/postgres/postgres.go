@@ -105,7 +105,7 @@ func (r *Repository) ExecuteQuery(ctx context.Context, query string) (string, er
 
 	err := r.pool.QueryRow(ctx, query).Scan(&result)
 	if err != nil {
-		return "", fmt.Errorf("ошибка выполнения ассерта: %w", err)
+		return "", fmt.Errorf("db query error: %w", err)
 	}
 
 	return result, nil

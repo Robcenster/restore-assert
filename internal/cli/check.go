@@ -44,7 +44,7 @@ func NewCheckCmd() *cobra.Command {
 			pipeline := app.NewPipeline(containerProvider, dbRepo, cfg)
 
 			if err := pipeline.RunCheck(ctx, backupPath); err != nil {
-				return fmt.Errorf("проверка провалилась: %v", err)
+				return fmt.Errorf("dump check failed: %v", err)
 			}
 			return nil
 		},
