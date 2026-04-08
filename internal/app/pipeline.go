@@ -38,7 +38,7 @@ func (p *Pipeline) RunCheck(ctx context.Context, backupPath string) error {
 	}
 
 	fmt.Println("📊 [Step 2/3] Database restored:")
-	if p.cfg.Output.ShowDatabaseInfo {
+	if p.cfg.Restore.ShowDatabaseInfo {
 		dbStructure, err := p.repo.GetDatabaseInfo(ctx)
 		if err != nil {
 			return fmt.Errorf("getting database info error: %w", err)
@@ -52,11 +52,15 @@ func (p *Pipeline) RunCheck(ctx context.Context, backupPath string) error {
 		return nil
 	}
 
-	fmt.Println("🧪 [Step 3/3] Running assertions...")
+	fmt.Println("🧪 [Step 3/3] Running asserts...")
 	failedAssertCount := 0
 
-	for _, assert := range p.cfg.Asserts {
-		success, err := p.verifier.RunAssert(ctx, assert)
+	// НОВАЯ СТРОКА: Превращаем вложенный конфиг в плоский список задач
+	tasks := p.verifier.CreateTasks(p.cfg.Asserts)
+
+	// ТВОЙ ОРИГИНАЛЬНЫЙ ЦИКЛ, но теперь перебирает tasks
+	for _, assert := range tasks {
+		success, err := p.verifier.RunAssert(ctx, assert) // assert теперь имеет тип AssertTask
 		if err != nil && !success {
 			fmt.Printf("❌ Error executing assert '%s': %v\n", assert.Name, err)
 			failedAssertCount++
@@ -66,7 +70,7 @@ func (p *Pipeline) RunCheck(ctx context.Context, backupPath string) error {
 			fmt.Printf("❌ Assert failed: %s\n", assert.Name)
 			failedAssertCount++
 		} else {
-			if !p.cfg.Output.HideSuccessTests {
+			if !p.cfg.Restore.HideSuccessTests {
 				fmt.Printf("✅ Assert passed: %s\n", assert.Name)
 			}
 		}
