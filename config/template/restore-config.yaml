@@ -8,12 +8,12 @@ docker:
   cpu_limit: "1.0"
 
 database:
-  db_name: "recovery_test"
-  user: "schema_manager"
+  db_name: "warehouse_management1"
+  user: "admin1"
   password: "very_secret_password"
-  # extensions:
-  #   - "uuid-ossp"
-  #   - "pg_stat_statements"
+  extensions:
+    - "uuid-ossp"
+    - "pg_trgm"
     
   # Кастомные настройки postgresql.conf (через флаги -c)
   settings:
@@ -25,79 +25,79 @@ database:
 restore:
   parallel_jobs: 1         # Сколько потоков использовать (для pg_restore)
   analyze: true            # Обновить статистику (желательно делать в конце восстановления)
-  on_error_stop: true     # Продолжать при ошибках (твой запрос)
+  on_error_stop: false     # Продолжать при ошибках (твой запрос)
   single_transaction: false # Транзакционность (твой запрос)
   no_owner: true           # Игнорировать владельцев (чтобы не было ошибок ролей)
   no_privileges: true      # Игнорировать права (GRANT/REVOKE)
-  full_restore_logs: true
+  full_restore_logs: false
   show_db_info: true
   hide_success_tests: false
 
 
 # Logical checks
-asserts:
+# asserts:
 
-  # 1. Быстрые проверки существования
-  # existence:
-  #   extensions: ["uuid-ossp", "pg_stat_statements"]
-  #   roles: ["app_writer", "app_readonly"]
-  #   schemas: ["public", "audit"]
+#   # 1. Быстрые проверки существования
+#   # existence:
+#   #   extensions: ["uuid-ossp", "pg_stat_statements"]
+#   #   roles: ["app_writer", "app_readonly"]
+#   #   schemas: ["public", "audit"]
 
 
-  # 2. Целостность таблиц, проверяем физические показатели и наполненность
-  tables:
-    - name: "users"
-      metrics:
-        - type: "row_count" # Проверяет объем данных.
-          condition: "gt" # eq (=), gt (>), lt (<), not_empty, по умолчанию eq
-          expected: 100 
+#   # 2. Целостность таблиц, проверяем физические показатели и наполненность
+#   tables:
+#     - name: "users"
+#       metrics:
+#         - type: "row_count" # Проверяет объем данных.
+#           condition: "gt" # eq (=), gt (>), lt (<), not_empty, по умолчанию eq
+#           expected: 100 
           
-        # Нужно, чтобы понять, не восстановились ли "пустышки" (индексы без данных).
-        - type: "table_size" # Проверка физического веса.
-          condition: "gt"
-          expected: "50MB"
+#         # Нужно, чтобы понять, не восстановились ли "пустышки" (индексы без данных).
+#         - type: "table_size" # Проверка физического веса.
+#           condition: "gt"
+#           expected: "50MB"
 
-        # sequence_health: Проверяет, что ID (автоинкремент) не сбросился в 1.
-        # Механика: сравнивает MAX(id) и nextval('sequence_name').
-        - type: "sequence_health"
-          severity: "error"
+#         # sequence_health: Проверяет, что ID (автоинкремент) не сбросился в 1.
+#         # Механика: сравнивает MAX(id) и nextval('sequence_name').
+#         - type: "sequence_health"
+#           severity: "error"
 
-    - name: "orders"
-      metrics:
-        - type: "row_count"
-          expected: 1000 # По умолчанию (без condition) должно быть равно 1000
+#     - name: "orders"
+#       metrics:
+#         - type: "row_count"
+#           expected: 1000 # По умолчанию (без condition) должно быть равно 1000
 
-        # Если самая свежая запись старше этого времени — бэкап считается протухшим.
-        - type: "freshness" # Проверка "свежести" бэкапа.
-          column: "created_at" # (столбец даты), max_age (Go-duration: 24h, 48h).
-          max_age: "24h"
+#         # Если самая свежая запись старше этого времени — бэкап считается протухшим.
+#         - type: "freshness" # Проверка "свежести" бэкапа.
+#           column: "created_at" # (столбец даты), max_age (Go-duration: 24h, 48h).
+#           max_age: "24h"
 
-  # 3. Проверяем, не побились ли данные внутри колонок.
-    - name: "transactions"
-      metrics:
-        # Если в критической колонке вдруг стало 50% NULL — значит экспорт прошел криво.
-        - type: "null_ratio" # Процент пустых значений в колонке.
-          column: "payout_gateway_id"
-          max_percent: 0.05 # не более 5%
+#   # 3. Проверяем, не побились ли данные внутри колонок.
+#     - name: "transactions"
+#       metrics:
+#         # Если в критической колонке вдруг стало 50% NULL — значит экспорт прошел криво.
+#         - type: "null_ratio" # Процент пустых значений в колонке.
+#           column: "payout_gateway_id"
+#           max_percent: 0.05 # не более 5%
 
-  # 4. Проверяем, что права не "перелетели" лишним людям.
-  privileges:
-    - role: "app_readonly"
-      table: "salaries"
-      # Убеждаемся, что у этого пользователя ТОЛЬКО SELECT.
-      allowed: ["SELECT"]
-      forbidden: ["INSERT", "UPDATE", "DELETE"]
+#   # 4. Проверяем, что права не "перелетели" лишним людям.
+#   privileges:
+#     - role: "app_readonly"
+#       table: "salaries"
+#       # Убеждаемся, что у этого пользователя ТОЛЬКО SELECT.
+#       allowed: ["SELECT"]
+#       forbidden: ["INSERT", "UPDATE", "DELETE"]
 
-  # 5. Любой SQL, который должен вернуть конкретный результат.
-  queries:
-    # Пример: Проверка, что сумма всех балансов сходится с ожидаемой или просто > 0.
-    - name: "Check Total Revenue"
-      query: "SELECT sum(amount)::text FROM orders WHERE status = 'paid'"
-      condition: "gt"
-      expected: "1000000"
+#   # 5. Любой SQL, который должен вернуть конкретный результат.
+#   queries:
+#     # Пример: Проверка, что сумма всех балансов сходится с ожидаемой или просто > 0.
+#     - name: "Check Total Revenue"
+#       query: "SELECT sum(amount)::text FROM orders WHERE status = 'paid'"
+#       condition: "gt"
+#       expected: "1000000"
 
-    # Пример: Проверка консистентности (отсутствие "сирот").
-    - name: "Orphaned Profiles"
-      query: "SELECT count(*)::text FROM profiles p LEFT JOIN users u ON p.user_id = u.id WHERE u.id IS NULL"
-      condition: "eq"
-      expected: "0"
+#     # Пример: Проверка консистентности (отсутствие "сирот").
+#     - name: "Orphaned Profiles"
+#       query: "SELECT count(*)::text FROM profiles p LEFT JOIN users u ON p.user_id = u.id WHERE u.id IS NULL"
+#       condition: "eq"
+#       expected: "0"

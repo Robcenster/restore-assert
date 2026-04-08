@@ -28,8 +28,18 @@ func NewPipeline(ct container.Provider, repo repository.DBRepository, cfg *confi
 }
 
 func (p *Pipeline) RunCheck(ctx context.Context, backupPath string) error {
-	if err := p.repo.InitializeEnvironment(ctx, p.cfg.Database.Roles, p.cfg.Database.Extensions); err != nil {
-		return fmt.Errorf("roles and extensions create error: %w", err)
+	// 1. Создаем роли, если они указаны в конфиге
+	if len(p.cfg.Database.Roles) > 0 {
+		if err := p.repo.EnsureRoles(ctx, p.cfg.Database.Roles); err != nil {
+			return fmt.Errorf("setup roles error: %w", err)
+		}
+	}
+
+	// 2. Подключаем расширения, если они указаны
+	if len(p.cfg.Database.Extensions) > 0 {
+		if err := p.repo.EnsureExtensions(ctx, p.cfg.Database.Extensions); err != nil {
+			return fmt.Errorf("setup extensions error: %w", err)
+		}
 	}
 
 	fmt.Println("⏳ [Step 1/3] Restoring database...")
@@ -47,10 +57,13 @@ func (p *Pipeline) RunCheck(ctx context.Context, backupPath string) error {
 		formatter.PrintDatabaseStructure(dbStructure)
 	}
 
-	// if len(p.cfg.Asserts) == 0 {
-	// 	fmt.Println("ℹ️ [Step 3/3] No logic tests in config file")
-	// 	return nil
-	// }
+	// Проверяем, есть ли хоть одна проверка внутри объекта Asserts
+	if len(p.cfg.Asserts.Existence.Extensions) == 0 &&
+		len(p.cfg.Asserts.Tables) == 0 {
+
+		fmt.Println("ℹ️ [Step 3/3] No logic tests in config file")
+		return nil
+	}
 
 	fmt.Println("🧪 [Step 3/3] Running asserts...")
 	failedAssertCount := 0

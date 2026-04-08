@@ -73,8 +73,10 @@ func (r *Repository) GetDatabaseInfo(ctx context.Context) (map[string][]formatte
 	return result, nil
 }
 
-func (r *Repository) InitializeEnvironment(ctx context.Context, roles []string, extensions []string) error {
+// EnsureRoles проверяет наличие ролей и создает отсутствующие.
+func (r *Repository) EnsureRoles(ctx context.Context, roles []string) error {
 	for _, role := range roles {
+		// В Postgres нет команды CREATE ROLE IF NOT EXISTS, поэтому используем анонимный блок
 		query := fmt.Sprintf(`
 			DO $$ 
 			BEGIN 
@@ -83,20 +85,21 @@ func (r *Repository) InitializeEnvironment(ctx context.Context, roles []string, 
 				END IF; 
 			END $$;`, role, role)
 
-		_, err := r.pool.Exec(ctx, query)
-		if err != nil {
-			return fmt.Errorf("failed to create role %s: %w", role, err)
+		if _, err := r.pool.Exec(ctx, query); err != nil {
+			return fmt.Errorf("failed to ensure role %s: %w", role, err)
 		}
 	}
+	return nil
+}
 
+// EnsureExtensions подключает указанные расширения в БД.
+func (r *Repository) EnsureExtensions(ctx context.Context, extensions []string) error {
 	for _, ext := range extensions {
 		query := fmt.Sprintf("CREATE EXTENSION IF NOT EXISTS \"%s\";", ext)
-		_, err := r.pool.Exec(ctx, query)
-		if err != nil {
-			return fmt.Errorf("failed to create extension %s: %w", ext, err)
+		if _, err := r.pool.Exec(ctx, query); err != nil {
+			return fmt.Errorf("failed to ensure extension %s: %w", ext, err)
 		}
 	}
-
 	return nil
 }
 

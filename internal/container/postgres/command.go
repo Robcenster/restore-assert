@@ -141,3 +141,4 @@ func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType Backu
 
 	return cmd, nil
 }
+
