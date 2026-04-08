@@ -6,89 +6,35 @@ import (
 	"strings"
 )
 
-func Compare(targetType, actualRaw, expectedRaw, operator string) (bool, error) {
-	actualRaw = strings.TrimSpace(actualRaw)
-	switch targetType {
-	case "int":
-		expectedInt, err := strconv.ParseInt(expectedRaw, 10, 64)
-		if err != nil {
-			return false, fmt.Errorf("invalid integer in config '%s': %w", expectedRaw, err)
-		}
-
-		actualInt, err := strconv.ParseInt(actualRaw, 10, 64)
-		if err != nil {
-			return false, nil
-		}
-		return compareOrdered(actualInt, expectedInt, operator)
-
-	case "float":
-		expectedFloat, err := strconv.ParseFloat(expectedRaw, 64)
-		if err != nil {
-			return false, fmt.Errorf("invalid float in config '%s': %w", expectedRaw, err)
-		}
-
-		actualFloat, err := strconv.ParseFloat(actualRaw, 64)
-		if err != nil {
-			return false, nil
-		}
-		return compareOrdered(actualFloat, expectedFloat, operator)
-
-	case "bool":
-		expectedBool, err := strconv.ParseBool(expectedRaw)
-		if err != nil {
-			return false, fmt.Errorf("invalid boolean in config '%s': %w", expectedRaw, err)
-		}
-
-		actualBool, err := strconv.ParseBool(actualRaw)
-		if err != nil {
-			return false, nil
-		}
-		return compareBools(actualBool, expectedBool, operator)
-
-	default: // By default try with strings
-		return compareStrings(actualRaw, expectedRaw, operator)
+// Compare сравнивает фактическое значение (из БД) и ожидаемое (из конфига)
+func Compare(actual string, expected any, condition string) (bool, error) {
+	if condition == "" {
+		condition = "eq" // По умолчанию строгое равенство
 	}
-}
 
-func compareOrdered[T int64 | float64](actual, expected T, operator string) (bool, error) {
-	switch operator {
-	case "==", "equals":
-		return actual == expected, nil
-	case "!=", "notequals":
-		return actual != expected, nil
-	case ">", "greater":
-		return actual > expected, nil
-	case ">=", "greaterequals":
-		return actual >= expected, nil
-	case "<", "less":
-		return actual < expected, nil
-	case "<=", "lessequals":
-		return actual <= expected, nil
-	default:
-		return false, fmt.Errorf("unknown operator: %s", operator)
-	}
-}
+	// Стратегия приведения к строке: всё, что пришло из YAML, превращаем в string
+	expectedStr := fmt.Sprintf("%v", expected)
 
-func compareBools(actual, expected bool, operator string) (bool, error) {
-	switch operator {
-	case "==", "equals":
-		return actual == expected, nil
-	case "!=", "notequals":
-		return actual != expected, nil
-	default:
-		return false, fmt.Errorf("operator %s not supported for bool", operator)
-	}
-}
+	switch condition {
+	case "eq":
+		return actual == expectedStr, nil
+	case "not_empty":
+		return actual != "" && actual != "0" && actual != "[]" && actual != "false" && actual != "null", nil
+	case "gt", "lt":
+		// Пытаемся безопасно распарсить обе строки как float64
+		actualFloat, err1 := strconv.ParseFloat(actual, 64)
+		expectedFloat, err2 := strconv.ParseFloat(expectedStr, 64)
+		if err1 != nil || err2 != nil {
+			return false, fmt.Errorf("невозможно сравнить как числа: actual='%s', expected='%s'", actual, expectedStr)
+		}
 
-func compareStrings(actual, expected, operator string) (bool, error) {
-	switch operator {
-	case "==", "equals":
-		return actual == expected, nil
-	case "!=", "notequals":
-		return actual != expected, nil
+		if condition == "gt" {
+			return actualFloat > expectedFloat, nil
+		}
+		return actualFloat < expectedFloat, nil
 	case "contains":
-		return strings.Contains(actual, expected), nil
+		return strings.Contains(actual, expectedStr), nil
 	default:
-		return false, fmt.Errorf("operator %s not supported for string", operator)
+		return false, fmt.Errorf("неизвестный оператор сравнения: %s", condition)
 	}
 }
