@@ -19,6 +19,7 @@ type Config struct {
 	Docker   Docker     `yaml:"docker"`
 	Database Database   `yaml:"database"`
 	Restore  Restore    `yaml:"restore"`
+	Asserts  Asserts    `yaml:"asserts"`
 }
 
 type Docker struct {
@@ -32,7 +33,7 @@ type Docker struct {
 }
 
 type Database struct {
-	DBName     string            `yaml:"db_name" env-default:"restore_test"`
+	DBName     string            `yaml:"db_name" env-default:"postgres"`
 	User       string            `yaml:"user" env-default:"postgres"`
 	Password   string            `yaml:"password" env-default:"postgres"`
 	Extensions []string          `yaml:"extensions"`
@@ -43,12 +44,57 @@ type Database struct {
 
 type Restore struct {
 	Analyze           bool `yaml:"analyze" env-default:"true"`
-	FullRestoreLogs   bool `yaml:"full_restore_logs"`
 	OnErrorStop       bool `yaml:"on_error_stop"`
 	SingleTransaction bool `yaml:"single_transaction"`
 	ParallelJobs      int  `yaml:"parallel_jobs" env-default:"1"`
 	NoOwner           bool `yaml:"no_owner"`
 	NoPrivileges      bool `yaml:"no_privileges"`
+	ModifyTemplate    bool `yaml:"modify_template"`
+	FullRestoreLogs   bool `yaml:"full_restore_logs"`
+	ShowDatabaseInfo  bool `yaml:"show_db_info"`
+	HideSuccessTests  bool `yaml:"hide_success_tests"`
+}
+
+type Asserts struct {
+	Existence  Existence   `yaml:"existence"`
+	Tables     []Table     `yaml:"tables"`
+	Privileges []Privilege `yaml:"privileges"`
+	Queries    []Query     `yaml:"queries"`
+}
+
+type Existence struct {
+	Extensions []string `yaml:"extensions"`
+	Roles      []string `yaml:"roles"`
+	Schemas    []string `yaml:"schemas"`
+}
+
+type Table struct {
+	Name    string   `yaml:"name"`
+	Metrics []Metric `yaml:"metrics"`
+}
+
+type Metric struct {
+	Type       string  `yaml:"type"`        // row_count, table_size, sequence_health, freshness, null_ratio
+	Condition  string  `yaml:"condition"`   // eq, gt, lt
+	Expected   any     `yaml:"expected"`    // interface{}, чтобы парсить 100, "50MB", "1h"
+	Column     string  `yaml:"column"`      // Для freshness, null_ratio
+	MaxAge     string  `yaml:"max_age"`     // Для freshness
+	MaxPercent float64 `yaml:"max_percent"` // Для null_ratio
+	Severity   string  `yaml:"severity"`    // error, warn
+}
+
+type Privilege struct {
+	Role      string   `yaml:"role"`
+	Table     string   `yaml:"table"`
+	Allowed   []string `yaml:"allowed"`
+	Forbidden []string `yaml:"forbidden"`
+}
+
+type Query struct {
+	Name      string `yaml:"name"`
+	Query     string `yaml:"query"`
+	Condition string `yaml:"condition"`
+	Expected  any    `yaml:"expected"`
 }
 
 func Load(path string) (*Config, error) {

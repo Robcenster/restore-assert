@@ -1,11 +1,17 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/Robcenster/restore-assert/internal/cli"
 )
 
 func main() {
-	// Просто вызываем Execute из пакета cli.
-	// Если что-то пойдет не так, приложение само завершится с кодом 1.
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("So, some panic get in a way, check this out:", r)
+		}
+	}()
+
 	cli.Execute()
 }

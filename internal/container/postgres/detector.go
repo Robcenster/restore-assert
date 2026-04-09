@@ -8,6 +8,7 @@ import (
 
 type BackupType string
 
+// TODO: Почистить комменты, заменить константы на const, убрать русский
 const (
 	TypeCustom     BackupType = "custom"
 	TypeDirectory  BackupType = "directory"

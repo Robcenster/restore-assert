@@ -9,6 +9,7 @@ import (
 	"github.com/Robcenster/restore-assert/internal/config"
 )
 
+// TODO: Почистить комменты, заменить константы на const, убрать русский
 func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType BackupType, containerPath string) ([]string, error) {
 	if containerPath == "" {
 		return nil, errors.New("container path cannot be empty")
@@ -112,10 +113,15 @@ func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType Backu
 		// НО! Утилита psql — это клиент. Чтобы начать читать файл и отправлять команды серверу,
 		// ей необходимо установить первичное подключение к какой-либо существующей базе данных.
 		// База "postgres" и пользователь "postgres" существуют всегда, поэтому это стандартная точка входа.
+		user := dbCfg.User
+		if user == "" {
+			user = "postgres"
+		}
+
 		cmd = []string{
 			"psql",
-			"-U", "postgres",
-			"-d", "postgres",
+			"-U", user,
+			"-d", "postgres", // 'postgres' тут только как точка входа, это ок
 		}
 
 		if rCfg.FullRestoreLogs {
@@ -133,6 +139,7 @@ func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType Backu
 	default:
 		return nil, fmt.Errorf("unsupported backup type: %s", bType)
 	}
-
+	fmt.Println(cmd)
 	return cmd, nil
 }
+

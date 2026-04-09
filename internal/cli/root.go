@@ -6,8 +6,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Cmd example: restore-assert check -c config.yml -v
-// restore-assert
 func Execute() {
 	rootCmd := &cobra.Command{
 		Use:   "restore-assert",

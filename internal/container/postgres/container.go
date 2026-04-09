@@ -18,19 +18,17 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// PostgresContainer реализует интерфейс container.Provider
+// TODO: Почистить комменты, заменить константы на const, убрать русский
 type PostgresContainer struct {
 	cfg       *config.Config
 	container *pgmod.PostgresContainer
 	connStr   string
 }
 
-// NewPostgresContainer — конструктор
 func NewPostgresContainer(cfg *config.Config) *PostgresContainer {
 	return &PostgresContainer{cfg: cfg}
 }
 
-// Start запускает контейнер
 func (p *PostgresContainer) Start(ctx context.Context) error {
 	dbCfg := p.cfg.Database
 	dCfg := p.cfg.Docker
@@ -116,13 +114,6 @@ func (p *PostgresContainer) ExecuteRestore(ctx context.Context, hostFilePath str
 		p.container.Exec(cleanupCtx, []string{"rm", "-rf", containerPath})
 	}()
 
-	// 4. Подготовка схемы (если нужно)
-	if bType != TypeDumpAll {
-		if err := p.initDatabaseSchema(ctx); err != nil {
-			return fmt.Errorf("schema init failed: %w", err)
-		}
-	}
-
 	// 5. Формирование и запуск команды
 	cmd, err := buildRestoreCommand(p.cfg.Database, p.cfg.Restore, bType, containerPath)
 	if err != nil {
@@ -148,66 +139,13 @@ func (p *PostgresContainer) ExecuteRestore(ctx context.Context, hostFilePath str
 		// Используем логгер вместо fmt для гибкости
 		log.Printf("Restore logs for %s:\n%s", baseName, output)
 	}
-
 	return nil
 }
 
-// initDatabaseSchema создает необходимые роли и расширения перед восстановлением.
-// Мы делаем это только для обычных дампов (для dumpall это не нужно, там всё есть внутри).
-func (p *PostgresContainer) initDatabaseSchema(ctx context.Context) error {
-	dbCfg := p.cfg.Database
-
-	// 1. Создаем недостающие роли
-	for _, role := range dbCfg.Roles {
-		// Используем анонимный блок DO в Postgres, чтобы проверить существование роли
-		// и не упасть с ошибкой, если роль уже есть (например, дефолтная 'postgres')
-		query := fmt.Sprintf(`
-			DO $$ 
-			BEGIN 
-				IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '%s') THEN 
-					CREATE ROLE %s; 
-				END IF; 
-			END $$;`, role, role)
-
-		if err := p.execPsql(ctx, dbCfg.DBName, query); err != nil {
-			return fmt.Errorf("failed to create role %s: %w", role, err)
-		}
-	}
-
-	// 2. Создаем необходимые расширения
-	for _, ext := range dbCfg.Extensions {
-		query := fmt.Sprintf("CREATE EXTENSION IF NOT EXISTS \"%s\";", ext)
-		if err := p.execPsql(ctx, dbCfg.DBName, query); err != nil {
-			return fmt.Errorf("failed to create extension %s: %w", ext, err)
-		}
-	}
-
-	return nil
-}
-
-// execPsql — маленькая вспомогательная функция, чтобы не дублировать код вызова Exec
-func (p *PostgresContainer) execPsql(ctx context.Context, dbName, query string) error {
-	cmd := []string{"psql", "-U", "postgres", "-d", dbName, "-c", query}
-
-	exitCode, reader, err := p.container.Exec(ctx, cmd)
-	if err != nil {
-		return err
-	}
-
-	outputBytes, _ := io.ReadAll(reader)
-	if exitCode != 0 {
-		return fmt.Errorf("psql failed with code %d: %s", exitCode, string(outputBytes))
-	}
-
-	return nil
-}
-
-// GetConnectionString возвращает DSN
 func (p *PostgresContainer) GetConnectionString() string {
 	return p.connStr
 }
 
-// Stop тушит контейнер
 func (p *PostgresContainer) Stop(ctx context.Context) error {
 	if p.container != nil {
 		return p.container.Terminate(ctx)
