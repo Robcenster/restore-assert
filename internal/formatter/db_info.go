@@ -3,38 +3,43 @@ package formatter
 import (
 	"fmt"
 	"sort"
+	"strings"
+
 )
 
-type DbObject struct {
-	Name string
-	Type string
-}
+func PrintSimpleReport(cluster *ClusterSnapshot) {
+	fmt.Println("\n" + strings.Repeat("=", 50))
+	fmt.Printf("🏗️  POSTGRES CLUSTER: %s\n", cluster.Version)
+	fmt.Printf("👥 ROLES: %s\n", strings.Join(cluster.Roles, ", "))
+	fmt.Println(strings.Repeat("=", 50))
 
-func PrintDatabaseStructure(structure map[string][]DbObject) {
-	if len(structure) == 0 {
-		fmt.Println("ℹ️ No objects in schemas")
-		return
-	}
-	fmt.Println("\n=== 📊 Restored Database Structure ===")
+	for _, db := range cluster.Databases {
+		if len(db.Schemas) == 0 {
+			fmt.Printf("\n📦 DB: [%s] (no tables)\n", db.Name)
+			continue
+		}
 
-	schemas := make([]string, 0, len(structure))
-	for schema := range structure {
-		schemas = append(schemas, schema)
-	}
-	sort.Strings(schemas)
+		fmt.Printf("\n📊 DB: [%s]\n", db.Name)
 
-	for _, schema := range schemas {
-		fmt.Printf("\n📂 Schema: [%s]\n", schema)
-		objects := structure[schema]
+		// Сортируем схемы
+		schemas := make([]string, 0, len(db.Schemas))
+		for s := range db.Schemas {
+			schemas = append(schemas, s)
+		}
+		sort.Strings(schemas)
 
-		for i, obj := range objects {
-			prefix := "  ├─"
-			if i == len(objects)-1 {
-				prefix = "  └─"
+		for _, sName := range schemas {
+			fmt.Printf("  📂 Schema: %s\n", sName)
+			tables := db.Schemas[sName]
+
+			for i, tName := range tables {
+				prefix := "  ├── "
+				if i == len(tables)-1 {
+					prefix = "  └── "
+				}
+				fmt.Printf("%s%s\n", prefix, tName)
 			}
-			fmt.Printf("%s %s [%s]\n", prefix, obj.Name, obj.Type)
 		}
 	}
-
-	fmt.Println("\n======================================")
+	fmt.Println("\n" + strings.Repeat("=", 50))
 }
