@@ -140,6 +140,7 @@ func (p *PostgresContainer) ExecuteRestore(ctx context.Context, hostFilePath str
 	}
 	return nil
 }
+
 func (p *PostgresContainer) GetConnectionString() string {
 	return p.connStr
 }

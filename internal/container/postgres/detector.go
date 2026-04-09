@@ -12,9 +12,9 @@ const (
 	TypeCustom     BackupType = "custom"
 	TypeDirectory  BackupType = "directory"
 	TypeTar        BackupType = "tar"
-	TypePlain      BackupType = "plain"
+	TypePlain      BackupType = "plain" // В формате SQL
 	TypeDumpAll    BackupType = "dumpall"
-	TypeCompressed BackupType = "compressed"
+	TypeCompressed BackupType = "compressed" // Для .gz или .zst
 	TypeUnknown    BackupType = "unknown"
 )
 
