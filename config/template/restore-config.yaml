@@ -8,7 +8,7 @@ docker:
   cpu_limit: "1.0"
 
 database:
-  db_name: "warehouse_management"
+  db_name: "postgres"
   user: "admin"
   password: "very_secret_password"
   extensions:
