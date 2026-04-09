@@ -19,7 +19,7 @@ type Config struct {
 	Docker   Docker     `yaml:"docker"`
 	Database Database   `yaml:"database"`
 	Restore  Restore    `yaml:"restore"`
-	Asserts  Asserts  `yaml:"asserts"`
+	Asserts  Asserts    `yaml:"asserts"`
 }
 
 type Docker struct {
@@ -33,7 +33,7 @@ type Docker struct {
 }
 
 type Database struct {
-	DBName     string            `yaml:"db_name" env-default:"restore_test"`
+	DBName     string            `yaml:"db_name" env-default:"postgres"`
 	User       string            `yaml:"user" env-default:"postgres"`
 	Password   string            `yaml:"password" env-default:"postgres"`
 	Extensions []string          `yaml:"extensions"`
@@ -49,6 +49,7 @@ type Restore struct {
 	ParallelJobs      int  `yaml:"parallel_jobs" env-default:"1"`
 	NoOwner           bool `yaml:"no_owner"`
 	NoPrivileges      bool `yaml:"no_privileges"`
+	ModifyTemplate    bool `yaml:"modify_template"`
 	FullRestoreLogs   bool `yaml:"full_restore_logs"`
 	ShowDatabaseInfo  bool `yaml:"show_db_info"`
 	HideSuccessTests  bool `yaml:"hide_success_tests"`
