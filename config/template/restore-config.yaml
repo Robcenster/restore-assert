@@ -8,13 +8,17 @@ docker:
   cpu_limit: "1.0"
 
 database:
-  db_name: "warehouse_management1"
-  user: "admin1"
+  db_name: "warehouse_management"
+  user: "admin"
   password: "very_secret_password"
   extensions:
     - "uuid-ossp"
     - "pg_trgm"
-    
+  roles:
+    - "postgres"
+    - "warehouse_analyst"
+    - "warehouse_app_user"
+
   # Кастомные настройки postgresql.conf (через флаги -c)
   settings:
     max_connections: "50"
@@ -25,10 +29,11 @@ database:
 restore:
   parallel_jobs: 1         # Сколько потоков использовать (для pg_restore)
   analyze: true            # Обновить статистику (желательно делать в конце восстановления)
-  on_error_stop: false     # Продолжать при ошибках (твой запрос)
+  # on_error_stop: true     # Продолжать при ошибках (твой запрос)
   single_transaction: false # Транзакционность (твой запрос)
   no_owner: true           # Игнорировать владельцев (чтобы не было ошибок ролей)
   no_privileges: true      # Игнорировать права (GRANT/REVOKE)
+  # modify_template: true
   full_restore_logs: false
   show_db_info: true
   hide_success_tests: false
