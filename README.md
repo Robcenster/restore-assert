@@ -1,153 +1,151 @@
-# Структура проекта
+# Restore-Assert
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
+Restore-Assert is a CLI tool for automated backup integrity verification (Burn-testing). It doesn't just check for file existence; it restores the backup into an isolated Docker container and runs a suite of tests (Assertions), ensuring your data is truly recoverable.
+
+## 🛠 Features
+
+* **Isolated Environment:** Automated launch of temporary containers via [Testcontainers](https://testcontainers.com/).
+* **Smart detector:** Automatic detection of dump formats (Custom, Directory, Tar, Plain SQL).
+* **Deep Verification (Assertions):**
+    * Presence of tables, extensions, and schemas.
+    * Metrics: Row count, Table size.
+    * Freshness: Data relevance check (ensures the backup is not too old).
+    * Null Ratio: Data quality control (checks for anomalous amounts of empty fields).
+* **Inspection:** View dump structure without running tests.
+
+## 📥 Installation
+
+```bash
+go install github.com/Robcenster/restore-assert@latest
 ```
-restore-assert/
-├── cmd/
-│   └── restore-assert/
-│       └── main.go           
+
+## 🚀 Quick Start
+
+![Restore-Assert Demo](https://raw.githubusercontent.com/Robcenster/restore-assert/main/assets/demo.gif)
+
+#### 1. Initialization
+Create a configuration file template in the current folder:
+```bash
+restore-assert init
+```
+#### 2. Backup Inspection (Optional)
+View the tree of tables, roles, and extensions inside the dump without running checks:
+```bash
+restore-assert inspect ./backup.sql
+```
+
+#### 3. Run Burn-test
+Launch the full cycle: container creation -> restoration -> assertion execution:
+```bash
+restore-assert check ./prod_backup.sql --config restore-config.yaml
+```
+
+## Project Structure
+```
+├── cmd/                # Entry point (main.go)
 ├── internal/
-│   ├── cli/                  # Слой интерфейса пользователя (Cobra)
-│   │   ├── root.go           # Базовая команда
-│   │   └── check.go          # Команда запуска проверки (парсит флаги, вызывает pipeline)
-│   ├── config/               # Слой конфигурации
-│   │   └── config.go         # Чтение YAML/ENV (структуры настроек)
-│   ├── interface/            # Хранение всех интерфейсов
-│   ├── pipeline/             # ОРКЕСТРАТОР (Ядро логики). ЗДЕСЬ ЖИВУТ ИНТЕРФЕЙСЫ
-│   │   ├── interfaces.go     # Описание того, что нужно пайплайну от БД и проверок
-│   │   └── runner.go         # Основной цикл: Setup -> Restore -> Verify -> Teardown
-│   ├── database/             # Слой инфраструктуры (Конкретные реализации)
-│   │   └── postgres/         # Пакет для работы с PostgreSQL
-│   │       ├── docker.go     # Поднятие временного контейнера через testcontainers-go
-│   │       └── restore.go    # Логика загрузки .sql/.dump (pg_restore)
-│   ├── verifier/             # Слой бизнес-проверок
-│   │   └── sql_checker.go    # Выполнение Smoke-тестов из конфига
-│   └── report/               # Слой представления
-│       └── formatter.go      # Красивый вывод в терминал или JSON
-├── config/
-|   ├── template/
-│   │   └── postgres.yaml 
-│   └── restore-config.yaml
-│
-├── test/                     # Папка для интеграционных тестов (E2E)
-├── go.mod
-└── README.md
+│   ├── app/            # Pipeline logic (RunCheck)
+│   ├── cli/            # Commands and interface (Cobra)
+│   ├── config/         # YAML parsing and validation
+│   ├── container/      # Docker orchestration and dump type detection
+│   ├── repository/     # SQL queries for the restored DB
+│   ├── verifier/       # Assertion execution engine
+│   └── formatter/      # Report and DB tree visualization
+└── restore-config.yaml # Configuration file
 ```
 
-## Анатомия проекта: Что делает каждая папка?
+## FAQ (Frequently Asked Questions)
 
-### 📁 `/cmd/restore-assert/` (Проходная)
+<details>
+<summary><b>Is it safe to run this against my production database?</b></summary>
 
-Здесь лежит только `main.go`. Его единственная задача — запустить библиотеку командной строки (Cobra). Тут вообще нет логики проверок.
+<b>No.</b> This tool is designed to test <b>backup files</b> (dumps), not live databases. It restores the dump into an isolated Docker container. Never point it at your production connection strings if you are using automated cleanup features.
+</details>
 
-### 📁 `/internal/cli/` (Отдел по работе с клиентами)
+<details>
+<summary><b>Why use Docker instead of just local psql/pg_restore?</b></summary>
 
-Здесь описаны команды, которые мы обсуждали выше (`init`, `check`, `version`).
+Docker ensures a clean, isolated environment. It prevents "it works on my machine" issues caused by different local PostgreSQL versions, installed extensions, or conflicting environment variables. Once the test is done, the container is destroyed, leaving your system clean.
+</details>
 
-- Этот пакет берет флаги из терминала (какой файл, какой конфиг), проверяет, что файл существует, и передает эти данные дальше — Оркестратору.
-    
+<details>
+<summary><b>Does it support MySQL, MariaDB or SQL Server?</b></summary>
 
-### 📁 `/internal/config/` (Архив)
+Currently, the primary focus is <b>PostgreSQL</b>.
+</details>
 
-Код, который умеет читать `restore-config.yaml` с жесткого диска и превращать его в Go-структуры (`struct`), чтобы другим частям программы было удобно с ним работать.
+<details>
+<summary><b>How long does a typical "Burn-test" take?</b></summary>
 
----
+It depends on your backup size and hardware. For a 1GB dump, it usually takes 1-3 minutes (including container startup, restore, and assertions). Using `fsync: "off"` in the config significantly accelerates this process.
+</details>
 
-### 👑 📁 `/internal/pipeline/` (Оркестратор / Директор завода)
+<details>
+<summary><b>Can I run this in CI/CD (GitHub Actions, GitLab CI)?</b></summary>
 
-**Что здесь:** Это **СЕРДЦЕ** твоего приложения. Пайплайн — это конвейер. Он не умеет сам поднимать Docker или парсить SQL. Он просто знает **порядок действий**. Здесь лежит функция (например, `Run()`), которая выглядит примерно так (псевдокод):
+Yes! Since it uses Docker, you just need a runner with Docker-in-Docker (DinD) support. It's a perfect way to verify your backups daily.
+</details>
 
-Go
 
-```
-func (p *Pipeline) Run() {
-    // 1. Директор говорит базе: "Включись"
-    p.dbEngine.StartContainer() 
-    
-    // Чтение файла из хранилища (S3-хранилища)
-    // p.dbEngine.Save(params...)
-    
-    // 2. "Загрузи дамп"
-    p.dbEngine.Restore(dumpFile) 
-    
-    // 3. Директор просит отдел контроля (verifier) прогнать тесты из конфига
-    results := p.verifier.RunTests(config.Checks, p.dbEngine)
-    
-    // 4. "Выключись и убери за собой"
-    p.dbEngine.Teardown() 
-    
-    // 5. Отправить результаты в отдел отчетов
-    p.reporter.Print(results)
-}
-```
+##  Troubleshooting
 
-**Важно:** В этой папке лежат **Интерфейсы**. Директор знает, что у базы должна быть кнопка `StartContainer`, но ему плевать, Postgres это или MySQL.
+Common issues and how to fix them:
 
----
+### Docker & Connection Issues
 
-### 🔧 📁 `/internal/database/` (Инфраструктурный слой / Рабочий цех)
+<details>
+<summary><code>port already allocated</code></summary>
 
-**Что здесь:** Здесь лежит грязная, низкоуровневая работа. Эта папка разбита на подпапки по типам баз: `/database/postgres`, `/database/mysql`.
+* **Reason:** Another database or service is using the port `restore-assert` is trying to bind to.
+* **Fix:** Change the port in your config or stop the conflicting container: `docker stop $(docker ps -q)`.
+</details>
 
-- **Что делает пакет `postgres`:**
-    
-    - Импортирует библиотеку `testcontainers-go`.
-        
-    - Генерирует команду `docker run postgres:15`.
-        
-    - Вызывает системную команду `pg_restore -d mydb < dump.sql`.
-        
-    - Устанавливает TCP-соединение с поднятым контейнером (используя драйвер `pgx`), чтобы можно было отправлять SQL-запросы.
-        
-- _Именно здесь реализуются те самые кнопки (`StartContainer`, `Restore`), которые нажимает Директор (`pipeline`)._
-    
+<details>
+<summary><code>context deadline exceeded</code> (during restore)</summary>
 
----
+* **Reason:** The backup is too large, and Docker/Postgres couldn't finish the job in time.
+* **Fix:** Increase resources in the `docker` section of your config (`cpu_limit`, `memory_limit`) or check your disk I/O.
+</details>
 
-### 🔬 📁 `/internal/verifier/` (Отдел контроля качества)
+### 🐘 Postgres Specifics
+<details>
+<summary><code>role "xyz" does not exist</code></summary>
 
-Этот код берет массив проверок из конфига, по очереди отправляет SQL-запросы в базу через интерфейс, получает цифры обратно и сравнивает: _"Так, ожидалось минимум 1000 строк, база вернула 950. Ставим статус FAIL"._
+* **Reason:** The dump contains objects owned by a user that wasn't created.
+* **Fix:** Ensure the role is listed in the `database.roles` section of your `restore-config.yaml` OR enable `no_owner: true` in the restore settings OR make other dump with CREATE ROLE.
+</details>
 
-### 📊 📁 `/internal/report/` (Отдел маркетинга)
+<details>
+<summary><code>role "abc" already exists</code></summary>
 
-Берет результаты от `verifier` и рисует красивые зеленые галочки `✅` или красные крестики `❌` в терминале.
+* **Reason:** You are trying to create multiple existing roles. `restore-assert` can create roles from different sources: `restore-config.yaml` in `database.roles` OR `database.user` OR dump that creates own roles.
+* **Fix:** Use `no-owner` OR/AND change `database.roles` OR/AND `database.user` in different cases.
+</details>
 
-### 1. Физическая и Техническая целостность
+<details>
+<summary><code>extension "xyz" does not exist</code></summary>
 
-**Где:** `internal/database/postgres/` (или `mysql/` и т.д.)
+* **Reason:** The environment (Postgres image) doesn't have the required extension binaries, or it wasn't enabled.
+* **Fix:** Ensure the extension is listed in the `database.extensions` section of your `restore-config.yaml` OR its creating in dump file OR ensure you are using a Docker image that includes these extensions (e.g., PostGIS).
+</details>
 
-Здесь мы проверяем: _«Может ли база вообще переварить этот файл?»_
+<details>
+<summary><code>database "xyz" already exists</code></summary>
 
-- **Что конкретно тут пишем:** Код, который запускает `pg_restore` или `psql` и **внимательно читает их вывод (Log Parsing)**.
-    
-- **Пример:** Если `pg_restore` выдал в консоль `archiver.c:1234: input file is too short`, значит, бэкап физически битый. Пакет `postgres` ловит это, формирует ошибку и возвращает её наверх Директору (`pipeline`).
-    
-- **Почему тут:** Потому что только пакет `postgres` знает, как выглядят ошибки именно Постгреса. Для MySQL они будут другими.
-    
+* **Reason:** Conflict between `database.db_name` in config and the database name inside the dump/restore commands.
+* **Fix:** Ensure `database.db_name` is unique OR change dump settings for not creating database.
+</details>
 
-### 2. Логическая (Бизнес) целостность
+### Tool Errors
 
-**Где:** `internal/verifier/`
+<details>
+<summary><code>failed to detect dump format</code></summary>
 
-Здесь мы проверяем: _«Правдивы ли данные внутри?»_
+* **Reason:** The file is corrupted or in a format the tool doesn't recognize yet.
+* **Fix:** Run `file your_backup.sql` to check the actual type. Ensure it's a valid `pg_dump` output (Plain, Custom, or Tar). If so, you can create issue to discuss.
+</details>
 
-- **Что конкретно тут пишем:** Универсальный «движок» для выполнения SQL-чеков. Он берет список из твоего YAML-конфига, берет соединение с базой и начинает «допрос».
-    
-- **Пример:** Он берет строку `SELECT count(*) FROM users` из конфига, отправляет её в базу, получает число `0` и сравнивает с `expected_min: 1000`. Если `0 < 1000`, он рапортует о провале.
-    
-- **Почему тут:** Этот код не знает, какая база под ним (Postgres или MySQL). Он просто умеет сравнивать цифры и строки, приходящие из интерфейса.
-    
-
-### 3. Управление процессом (Координация)
-
-**Где:** `internal/pipeline/`
-
-Здесь мы **не пишем** логику проверок. Здесь мы пишем **сценарий**.
-
-- **Что тут происходит:** Директор (`pipeline`) по очереди вызывает методы:
-    
-    1. Вызвать `database.Start()` (Техническая готовность среды).
-        
-    2. Вызвать `database.Restore()` (Проверка технической целостности файла).
-        
-    3. Вызвать `verifier.Run()` (Проверка логической целостности данных).
-        
-- **Важно:** Если на любом этапе (например, на этапе 2) произошла ошибка, Директор останавливает конвейер и говорит: «Дальше проверять нет смысла, бэкап — мусор».
+##
+Developed to ensure your backups actually work when the fire starts.

@@ -1,108 +1,92 @@
-# DBType: postgres/mssql/oracle etc
-engine: "postgres"
+engine: "postgres" # Database engine type (postgres, mssql, oracle, etc.)
 
 docker:
-  image: "postgres:17-alpine"
-  container_name: "restore-assert-vp"
-  memory_limit: "512MB"
-  cpu_limit: "1.0"
+  image: "postgres:17-alpine" # Docker image for the temporary environment
+  container_name: "restore-assert-vp" # Name of the spawned container
+  memory_limit: "512MB" # RAM limit for the container
+  cpu_limit: "1.0" # CPU core limit (e.g., 0.5, 1.0)
 
 database:
-  db_name: "postgres"
-  user: "admin"
-  password: "very_secret_password"
-  extensions:
+  db_name: "postgres" # Target database name
+  user: "admin" # Database administrative user
+  password: "very_secret_password" # Administrative password
+  extensions: # List of required PostgreSQL extensions
     - "uuid-ossp"
     - "pg_trgm"
-  roles:
+  roles: # Roles to be created before restoration
     - "postgres"
     - "warehouse_analyst"
     - "warehouse_app_user"
 
-  # Кастомные настройки postgresql.conf (через флаги -c)
-  settings:
-    max_connections: "50"
-    shared_buffers: "128MB"
-    fsync: "off"
+  settings: # Custom postgresql.conf parameters (via -c flags)
+    max_connections: "50" # Maximum concurrent connections
+    shared_buffers: "128MB" # Memory for caching data
+    fsync: "off" # Disables disk sync for faster testing (unsafe for prod)
 
-# Параметры восстановления (Restore)
 restore:
-  parallel_jobs: 1         # Сколько потоков использовать (для pg_restore)
-  analyze: true            # Обновить статистику (желательно делать в конце восстановления)
-  # on_error_stop: true     # Продолжать при ошибках (твой запрос)
-  single_transaction: false # Транзакционность (твой запрос)
-  no_owner: true           # Игнорировать владельцев (чтобы не было ошибок ролей)
-  no_privileges: true      # Игнорировать права (GRANT/REVOKE)
-  # modify_template: true
-  full_restore_logs: false
-  show_db_info: true
-  hide_success_tests: false
+  parallel_jobs: 1 # Number of threads for pg_restore
+  analyze: true # Run ANALYZE to update statistics after restore
+  on_error_stop: true
+  single_transaction: false # Use a single transaction for the whole restore
+  no_owner: true # Skip restoration of object ownership
+  no_privileges: true # Skip restoration of access privileges (GRANT/REVOKE)
+  show_restore_logs: false # Print verbose logs from restore utilities
+  show_db_info: true # Display database summary after restore
+  show_success_tests: false # Only show failed assertions in the report
 
+asserts: # Logical validation checks
+  # 1. Quick existence checks for DB objects
+  existence:
+    extensions: ["uuid-ossp", "pg_stat_statements"] # Verify extensions
+    roles: ["app_writer", "app_readonly"] # Verify roles
+    schemas: ["public", "audit"] # Verify schemas
 
-# Logical checks
-# asserts:
-
-#   # 1. Быстрые проверки существования
-#   # existence:
-#   #   extensions: ["uuid-ossp", "pg_stat_statements"]
-#   #   roles: ["app_writer", "app_readonly"]
-#   #   schemas: ["public", "audit"]
-
-
-#   # 2. Целостность таблиц, проверяем физические показатели и наполненность
-#   tables:
-#     - name: "users"
-#       metrics:
-#         - type: "row_count" # Проверяет объем данных.
-#           condition: "gt" # eq (=), gt (>), lt (<), not_empty, по умолчанию eq
-#           expected: 100 
+  # 2. Table integrity and volume checks
+  tables:
+    - name: "users"
+      metrics:
+        - type: "row_count" # Check number of records
+          condition: "gt" # Comparison: eq, gt, lt, not_empty
+          expected: 100 
           
-#         # Нужно, чтобы понять, не восстановились ли "пустышки" (индексы без данных).
-#         - type: "table_size" # Проверка физического веса.
-#           condition: "gt"
-#           expected: "50MB"
+        - type: "table_size" # Check physical table size
+          condition: "gt"
+          expected: "50MB"
 
-#         # sequence_health: Проверяет, что ID (автоинкремент) не сбросился в 1.
-#         # Механика: сравнивает MAX(id) и nextval('sequence_name').
-#         - type: "sequence_health"
-#           severity: "error"
+        - type: "sequence_health" # Verify that sequences match MAX(id)
+          severity: "error"
 
-#     - name: "orders"
-#       metrics:
-#         - type: "row_count"
-#           expected: 1000 # По умолчанию (без condition) должно быть равно 1000
+    - name: "orders"
+      metrics:
+        - type: "row_count" # Default condition is 'eq'
+          expected: 1000 
 
-#         # Если самая свежая запись старше этого времени — бэкап считается протухшим.
-#         - type: "freshness" # Проверка "свежести" бэкапа.
-#           column: "created_at" # (столбец даты), max_age (Go-duration: 24h, 48h).
-#           max_age: "24h"
+        - type: "freshness" # Check if data is up-to-date
+          column: "created_at" # Date/time column for check
+          max_age: "24h" # Max allowed age of the newest record
 
-#   # 3. Проверяем, не побились ли данные внутри колонок.
-#     - name: "transactions"
-#       metrics:
-#         # Если в критической колонке вдруг стало 50% NULL — значит экспорт прошел криво.
-#         - type: "null_ratio" # Процент пустых значений в колонке.
-#           column: "payout_gateway_id"
-#           max_percent: 0.05 # не более 5%
+  # 3. Data quality checks (e.g., corruption or partial exports)
+    - name: "transactions"
+      metrics:
+        - type: "null_ratio" # Check percentage of NULL values in a column
+          column: "payout_gateway_id"
+          max_percent: 0.05 # Max 5% NULLs allowed
 
-#   # 4. Проверяем, что права не "перелетели" лишним людям.
-#   privileges:
-#     - role: "app_readonly"
-#       table: "salaries"
-#       # Убеждаемся, что у этого пользователя ТОЛЬКО SELECT.
-#       allowed: ["SELECT"]
-#       forbidden: ["INSERT", "UPDATE", "DELETE"]
+  # 4. Security and permission auditing
+  privileges:
+    - role: "app_readonly"
+      table: "salaries"
+      allowed: ["SELECT"] # Exactly these permissions are allowed
+      forbidden: ["INSERT", "UPDATE", "DELETE"] # These must NOT exist
 
-#   # 5. Любой SQL, который должен вернуть конкретный результат.
-#   queries:
-#     # Пример: Проверка, что сумма всех балансов сходится с ожидаемой или просто > 0.
-#     - name: "Check Total Revenue"
-#       query: "SELECT sum(amount)::text FROM orders WHERE status = 'paid'"
-#       condition: "gt"
-#       expected: "1000000"
+  # 5. Custom SQL assertions
+  queries:
+    - name: "Check Total Revenue" # Business logic validation
+      query: "SELECT sum(amount)::text FROM orders WHERE status = 'paid'"
+      condition: "gt"
+      expected: "1000000"
 
-#     # Пример: Проверка консистентности (отсутствие "сирот").
-#     - name: "Orphaned Profiles"
-#       query: "SELECT count(*)::text FROM profiles p LEFT JOIN users u ON p.user_id = u.id WHERE u.id IS NULL"
-#       condition: "eq"
-#       expected: "0"
+    - name: "Orphaned Profiles" # Data consistency (checking for orphans)
+      query: "SELECT count(*)::text FROM profiles p LEFT JOIN users u ON p.user_id = u.id WHERE u.id IS NULL"
+      condition: "eq"
+      expected: "0"

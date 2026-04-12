@@ -1,6 +1,5 @@
 package formatter
 
-// internal/formatter/types.go
 type ClusterSnapshot struct {
 	Version   string
 	Roles     []string
@@ -9,5 +8,5 @@ type ClusterSnapshot struct {
 
 type DatabaseSnapshot struct {
 	Name    string
-	Schemas map[string][]string // Имя схемы -> список таблиц
+	Schemas map[string][]string
 }

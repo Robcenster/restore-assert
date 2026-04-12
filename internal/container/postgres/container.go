@@ -135,7 +135,7 @@ func (p *PostgresContainer) ExecuteRestore(ctx context.Context, hostFilePath str
 		return fmt.Errorf("restore failed (code %d). Logs:\n%s", exitCode, output)
 	}
 
-	if len(output) > 0 {
+	if len(output) > 0 && p.cfg.Restore.ShowRestoreLogs {
 		// Используем логгер вместо fmt для гибкости
 		log.Printf("Restore logs for %s:\n%s", baseName, output)
 	}

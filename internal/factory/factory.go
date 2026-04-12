@@ -11,7 +11,8 @@ import (
 	repo "github.com/Robcenster/restore-assert/internal/repository/postgres"
 )
 
-func NewContainerProvider(cfg *config.Config) (container.Provider, error) {
+// TODO: maybe join in one func NewProvider() (container, repo)?
+func NewContainerProvider(cfg *config.Config) (container.Container, error) {
 	switch cfg.Engine {
 	case config.EnginePostgres:
 		return postgres.NewPostgresContainer(cfg), nil
@@ -24,7 +25,7 @@ func NewContainerProvider(cfg *config.Config) (container.Provider, error) {
 	}
 }
 
-func NewRepository(ctx context.Context, cfg *config.Config, cp container.Provider) (repository.DBRepository, error) {
+func NewRepository(ctx context.Context, cfg *config.Config, cp container.Container) (repository.DBRepository, error) {
 	switch cfg.Engine {
 	case config.EnginePostgres:
 		connStr := cp.GetConnectionString()
