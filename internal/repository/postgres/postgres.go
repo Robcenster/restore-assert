@@ -30,7 +30,6 @@ func New(ctx context.Context, connString string) (*Repository, error) {
 // EnsureRoles проверяет наличие ролей и создает отсутствующие.
 func (r *Repository) EnsureRoles(ctx context.Context, roles []string) error {
 	for _, role := range roles {
-		// В Postgres нет команды CREATE ROLE IF NOT EXISTS, поэтому используем анонимный блок
 		query := fmt.Sprintf(`
 			DO $$ 
 			BEGIN 
@@ -52,7 +51,6 @@ func (r *Repository) EnsureExtensions(ctx context.Context, extensions []string, 
 		return nil
 	}
 
-	// ШАГ 1: Установка в текущую подключенную БД (для простых дампов без CREATE DATABASE)
 	for _, ext := range extensions {
 		query := fmt.Sprintf(`CREATE EXTENSION IF NOT EXISTS "%s" SCHEMA public;`, ext)
 		if _, err := r.pool.Exec(ctx, query); err != nil {
@@ -60,25 +58,20 @@ func (r *Repository) EnsureExtensions(ctx context.Context, extensions []string, 
 		}
 	}
 
-	if !modifyTemplate{
+	if !modifyTemplate {
 		return nil
 	}
 
-	fmt.Println("Изменение шаблона!")
-	// ШАГ 2: Модификация системного template0 (для дампов с CREATE DATABASE)
-	// 2.1 Разрешаем подключения к template0 (по умолчанию запрещено)
 	unlockQuery := `UPDATE pg_database SET datallowconn = true WHERE datname = 'template0';`
 	if _, err := r.pool.Exec(ctx, unlockQuery); err != nil {
 		return fmt.Errorf("failed to unlock template0: %w", err)
 	}
 
-	// Возвращаем настройки безопасности при выходе из функции
 	defer func() {
 		lockQuery := `UPDATE pg_database SET datallowconn = false WHERE datname = 'template0';`
 		_, _ = r.pool.Exec(context.Background(), lockQuery)
 	}()
 
-	// 2.2 Подключаемся напрямую к template0
 	templateCfg := r.pool.Config().ConnConfig.Copy()
 	templateCfg.Database = "template0"
 	conn, err := pgx.ConnectConfig(ctx, templateCfg)
@@ -87,7 +80,6 @@ func (r *Repository) EnsureExtensions(ctx context.Context, extensions []string, 
 	}
 	defer conn.Close(ctx)
 
-	// 2.3 Устанавливаем расширения в самый корень Postgres
 	for _, ext := range extensions {
 		query := fmt.Sprintf(`CREATE EXTENSION IF NOT EXISTS "%s" SCHEMA public;`, ext)
 		if _, err := conn.Exec(ctx, query); err != nil {
@@ -99,8 +91,6 @@ func (r *Repository) EnsureExtensions(ctx context.Context, extensions []string, 
 }
 
 func (r *Repository) Analyze(ctx context.Context) error {
-	// Выполняем ANALYZE для всей текущей базы данных.
-	// Это обновит pg_statistic, что критично для планировщика.
 	_, err := r.pool.Exec(ctx, "ANALYZE")
 	if err != nil {
 		return fmt.Errorf("failed to run ANALYZE: %w", err)

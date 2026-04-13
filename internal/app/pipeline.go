@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 
 	"github.com/Robcenster/restore-assert/internal/config"
 	"github.com/Robcenster/restore-assert/internal/container"
@@ -16,96 +17,100 @@ type Pipeline struct {
 	repo      repository.DBRepository
 	cfg       *config.Config
 	verifier  *verifier.Verifier
+	formatter formatter.Formatter
 }
 
-func NewPipeline(ct container.Provider, repo repository.DBRepository, cfg *config.Config) *Pipeline {
+func NewPipeline(ct container.Provider, repo repository.DBRepository, cfg *config.Config, f formatter.Formatter) *Pipeline {
 	return &Pipeline{
 		container: ct,
 		repo:      repo,
 		cfg:       cfg,
 		verifier:  verifier.NewVerifier(repo),
+		formatter: f,
 	}
 }
 
 func (p *Pipeline) RunCheck(ctx context.Context, backupPath string) error {
-
-	// 1. Создаем роли, если они указаны в конфиге
-	if len(p.cfg.Database.Roles) > 0 {
-		if err := p.repo.EnsureRoles(ctx, p.cfg.Database.Roles); err != nil {
-			return fmt.Errorf("setup roles error: %w", err)
-		}
+	if err := p.prepareEnvironment(ctx); err != nil {
+		return err
 	}
 
-	// 2. Подключаем расширения, если они указаны
-	// !!!Необходимо в конфиг добавить параметр, если в дампе есть create db!!!
-	if len(p.cfg.Database.Extensions) > 0 {
-		if err := p.repo.EnsureExtensions(ctx, p.cfg.Database.Extensions, p.cfg.Restore.ModifyTemplate); err != nil {
-			return fmt.Errorf("setup extensions error: %w", err)
-		}
-	}
-
-	fmt.Println("⏳ [Step 1/3] Restoring database...")
+	p.formatter.Step(fmt.Sprintf("Restoring dump: %s", filepath.Base(backupPath)))
 	if err := p.container.ExecuteRestore(ctx, backupPath); err != nil {
 		return fmt.Errorf("restoring database error: %w", err)
 	}
-
-	fmt.Println("📊 [Step 2/3] Database restored:")
-
-	if p.cfg.Restore.ShowDatabaseInfo {
-		report, err := p.repo.GetSimpleClusterReport(ctx)
-		if err != nil {
-			return err
-		}
-		formatter.PrintSimpleReport(report)
-	}
-
-	fmt.Print("🔍 [Step 3/4] Running ANALYZE to update statistics... ")
+	p.formatter.Success("Dump was successfully deployed!")
 
 	if p.cfg.Restore.Analyze {
+		p.formatter.Step("Run ANALYZE (collect statistics)")
 		if err := p.repo.Analyze(ctx); err != nil {
-			// Мы можем либо прервать выполнение, либо просто залогировать ошибку,
-			// так как база технически уже восстановлена.
-			fmt.Printf("⚠️ Warning: %v\n", err)
+			p.formatter.Warning("⚠️ Warning ANALYZE: %v", err)
 		} else {
-			fmt.Println("Done!")
+			p.formatter.Success("Database statistics have been updated!")
 		}
 	}
 
-	fmt.Println("🧪 [Step 4/4] Running asserts...")
+	p.formatter.Step("Running asserts")
 	failedAssertCount := 0
 
 	// Проверяем, есть ли хоть одна проверка внутри объекта Asserts
 	if len(p.cfg.Asserts.Existence.Extensions) == 0 &&
 		len(p.cfg.Asserts.Tables) == 0 {
 
-		fmt.Println("ℹ️ [Step 4/4] No logic tests in config file")
-		return nil
+		p.formatter.Info("No logical tests have been added")
 	}
 
-	// НОВАЯ СТРОКА: Превращаем вложенный конфиг в плоский список задач
+	// Превращаем вложенный конфиг в плоский список задач
 	tasks := p.verifier.CreateTasks(p.cfg.Asserts)
 
 	// ТВОЙ ОРИГИНАЛЬНЫЙ ЦИКЛ, но теперь перебирает tasks
 	for _, assert := range tasks {
-		success, err := p.verifier.RunAssert(ctx, assert) // assert теперь имеет тип AssertTask
+		success, err := p.verifier.RunAssert(ctx, assert)
 		if err != nil && !success {
-			fmt.Printf("❌ Error executing assert '%s': %v\n", assert.Name, err)
+			p.formatter.Error("'%s': %v", assert.Name, err)
 			failedAssertCount++
 			continue
 		}
 		if !success {
-			fmt.Printf("❌ Assert failed: %s\n", assert.Name)
+			p.formatter.Error("Failed: %s", assert.Name)
 			failedAssertCount++
-		} else {
-			if !p.cfg.Restore.HideSuccessTests {
-				fmt.Printf("✅ Assert passed: %s\n", assert.Name)
-			}
+		} else if !p.cfg.Restore.HideSuccessTests {
+			p.formatter.Success("%s", assert.Name)
 		}
+
+	}
+
+	if p.cfg.Restore.ShowDatabaseInfo {
+		report, err := p.repo.GetSimpleClusterReport(ctx)
+		if err != nil {
+			return err
+		}
+		p.formatter.PrintClusterReport(report)
 	}
 
 	if failedAssertCount > 0 {
-		return fmt.Errorf("total failed asserts: %d", failedAssertCount)
+		p.formatter.Info("Total failed asserts: %d", failedAssertCount)
+		return fmt.Errorf("%d assertions failed", failedAssertCount)
 	}
-	fmt.Println("✅ All asserts completed successfully!")
+
+	return nil
+}
+
+func (p *Pipeline) prepareEnvironment(ctx context.Context) error {
+	if len(p.cfg.Database.Roles) > 0 {
+		p.formatter.Step("Сreating database roles")
+		if err := p.repo.EnsureRoles(ctx, p.cfg.Database.Roles); err != nil {
+			return fmt.Errorf("setup roles error: %w", err)
+		}
+		p.formatter.Success("Roles created successfully!")
+	}
+
+	if len(p.cfg.Database.Extensions) > 0 {
+		p.formatter.Step("Installing extensions")
+		if err := p.repo.EnsureExtensions(ctx, p.cfg.Database.Extensions, p.cfg.Restore.ModifyTemplate); err != nil {
+			return fmt.Errorf("setup extensions error: %w", err)
+		}
+		p.formatter.Success("Extensions installed!")
+	}
 	return nil
 }
