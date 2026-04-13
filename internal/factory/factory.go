@@ -7,15 +7,16 @@ import (
 	"github.com/Robcenster/restore-assert/internal/config"
 	"github.com/Robcenster/restore-assert/internal/container"
 	"github.com/Robcenster/restore-assert/internal/container/postgres"
+	"github.com/Robcenster/restore-assert/internal/formatter"
 	"github.com/Robcenster/restore-assert/internal/repository"
 	repo "github.com/Robcenster/restore-assert/internal/repository/postgres"
 )
 
 // TODO: maybe join in one func NewProvider() (container, repo)?
-func NewContainerProvider(cfg *config.Config) (container.Container, error) {
+func NewContainerProvider(cfg *config.Config, f formatter.Formatter) (container.Container, error) {
 	switch cfg.Engine {
 	case config.EnginePostgres:
-		return postgres.NewPostgresContainer(cfg), nil
+		return postgres.NewPostgresContainer(cfg, f), nil
 
 	case config.EngineMSSQL:
 		return nil, fmt.Errorf("mssql container provider is not implemented yet")

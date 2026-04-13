@@ -8,14 +8,13 @@ import (
 
 type BackupType string
 
-// TODO: Почистить комменты, заменить константы на const, убрать русский
 const (
 	TypeCustom     BackupType = "custom"
 	TypeDirectory  BackupType = "directory"
 	TypeTar        BackupType = "tar"
-	TypePlain      BackupType = "plain" // В формате SQL
+	TypePlain      BackupType = "plain" // format SQL
 	TypeDumpAll    BackupType = "dumpall"
-	TypeCompressed BackupType = "compressed" // Для .gz или .zst
+	TypeCompressed BackupType = "compressed" // for .gz or .zst
 	TypeUnknown    BackupType = "unknown"
 )
 
@@ -26,7 +25,6 @@ func detectBackupType(dumpPath string) (BackupType, error) {
 		return TypeUnknown, err
 	}
 
-	// 1. Проверка на формат Directory (-Fd)
 	if info.IsDir() {
 		return TypeDirectory, nil
 	}
@@ -37,38 +35,31 @@ func detectBackupType(dumpPath string) (BackupType, error) {
 	}
 	defer f.Close()
 
-	// 2. Читаем первые 512 байт (безопасный стандарт для сниффинга типов)
+	// Reading the first 512 bytes
 	buf := make([]byte, 512)
 	n, err := f.Read(buf)
 	if err != nil && err != io.EOF {
-		return TypeUnknown, err // Ловим реальные ошибки чтения
+		return TypeUnknown, err
 	}
 
 	if n == 0 {
-		return TypeUnknown, nil // Файл абсолютно пуст
+		return TypeUnknown, nil
 	}
 
-	// Работаем только с фактически прочитанными данными
 	chunk := buf[:n]
 
-	// 3. Проверяем бинарные форматы по магическим байтам
-
-	// Custom формат (-Fc)
 	if len(chunk) >= 5 && string(chunk[:5]) == "PGDMP" {
 		return TypeCustom, nil
 	}
 
-	// Проверка на GZIP (\x1f\x8b) - часто используется для сжатия текстовых дампов
 	if len(chunk) >= 2 && chunk[0] == 0x1f && chunk[1] == 0x8b {
 		return TypeCompressed, nil
 	}
 
-	// TAR формат (-Ft). Сигнатура "ustar" обычно находится на 257-м байте
 	if len(chunk) >= 262 && string(chunk[257:262]) == "ustar" {
 		return TypeTar, nil
 	}
 
-	// 4. Проверяем текстовые форматы (-Fp и pg_dumpall)
 	content := string(chunk)
 
 	if strings.Contains(content, "-- PostgreSQL database cluster dump") {
@@ -79,9 +70,6 @@ func detectBackupType(dumpPath string) (BackupType, error) {
 		return TypePlain, nil
 	}
 
-	// 5. Расширенная эвристика для SQL
-	// Если строгий заголовок случайно удалили, но это точно дамп от pg_dump:
-	// Он почти всегда начинается с настройки параметров сессии.
 	if strings.Contains(content, "SET statement_timeout") ||
 		strings.Contains(content, "SET client_encoding") {
 		return TypePlain, nil

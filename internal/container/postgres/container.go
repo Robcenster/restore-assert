@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Robcenster/restore-assert/internal/config"
+	"github.com/Robcenster/restore-assert/internal/formatter"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/go-units"
 	"github.com/testcontainers/testcontainers-go"
@@ -18,18 +19,25 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// TODO: Почистить комменты, заменить константы на const, убрать русский
 type PostgresContainer struct {
 	cfg       *config.Config
 	container *pgmod.PostgresContainer
 	connStr   string
+	f         formatter.Formatter
 }
 
-func NewPostgresContainer(cfg *config.Config) *PostgresContainer {
-	return &PostgresContainer{cfg: cfg}
+func NewPostgresContainer(cfg *config.Config, f formatter.Formatter) *PostgresContainer {
+	return &PostgresContainer{cfg: cfg, f: f}
 }
 
 func (p *PostgresContainer) Start(ctx context.Context) error {
+	// Testcontainers panic guard
+	defer func() {
+		if r := recover(); r != nil {
+			p.f.Error("testcontainers panicked: %v", r)
+		}
+	}()
+
 	dbCfg := p.cfg.Database
 	dCfg := p.cfg.Docker
 
@@ -70,7 +78,7 @@ func (p *PostgresContainer) Start(ctx context.Context) error {
 
 // ExecuteRestore делает всю грязную работу по заливке бэкапа
 func (p *PostgresContainer) ExecuteRestore(ctx context.Context, hostFilePath string) error {
-	// 1. Предварительная проверка на хосте
+	// Preliminary check on the hosting service
 	absPath, err := filepath.Abs(hostFilePath)
 	if err != nil {
 		return fmt.Errorf("invalid host path: %w", err)
@@ -80,18 +88,15 @@ func (p *PostgresContainer) ExecuteRestore(ctx context.Context, hostFilePath str
 		return fmt.Errorf("backup file not found: %s", absPath)
 	}
 
-	// Формируем безопасные пути
+	// Creating Safe Pathways
 	baseName := filepath.Base(absPath)
 	containerPath := path.Join("/tmp", baseName)
 
-	// 2. Детектим тип бэкапа
 	bType, err := detectBackupType(absPath)
 	if err != nil {
 		return fmt.Errorf("backup detection failed: %w", err)
 	}
 
-	// 3. Копирование данных
-	// Используем switch только для выбора метода, логику обработки ошибок выносим вниз
 	var copyErr error
 	switch bType {
 	case TypeDirectory:
@@ -106,15 +111,13 @@ func (p *PostgresContainer) ExecuteRestore(ctx context.Context, hostFilePath str
 		return fmt.Errorf("failed to transfer %s to container: %w", bType, copyErr)
 	}
 
-	// ГАРАНТИРОВАННАЯ ОЧИСТКА: Удаляем файл/папку из контейнера после завершения функции
-	// Это важно, если контейнер живет долго (например, во время запуска пачки тестов)
+	// Remove the file/folder from the container after the function completes
 	defer func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		p.container.Exec(cleanupCtx, []string{"rm", "-rf", containerPath})
 	}()
 
-	// 5. Формирование и запуск команды
 	cmd, err := buildRestoreCommand(p.cfg.Database, p.cfg.Restore, bType, containerPath)
 	if err != nil {
 		return err
@@ -125,20 +128,24 @@ func (p *PostgresContainer) ExecuteRestore(ctx context.Context, hostFilePath str
 		return fmt.Errorf("exec failed: %w", err)
 	}
 
-	// БЕЗОПАСНОЕ ЧТЕНИЕ ЛОГОВ: Ограничиваем размер, чтобы не упасть по OOM
-	// если дамп выдаст миллион ворнингов
+	// Reading logs
 	const maxLogSize = 1 * 1024 * 1024 // 1MB
 	outputBytes, _ := io.ReadAll(io.LimitReader(reader, maxLogSize))
-	output := string(outputBytes)
+	output := strings.TrimSpace(string(outputBytes))
 
 	if exitCode != 0 {
-		return fmt.Errorf("restore failed (code %d). Logs:\n%s", exitCode, output)
+		if len(output) > 0 {
+			p.f.Error("Restore command failed with exit code %d. Details:", exitCode)
+			// Выводим логи через Info, чтобы они были с приятным отступом
+			p.f.Info("--- DUMP LOGS ---\n%s\n-----------------", output)
+		}
+		return fmt.Errorf("restore failed (exit code %d)", exitCode)
 	}
 
-	if len(output) > 0 && p.cfg.Restore.ShowRestoreLogs {
-		// Используем логгер вместо fmt для гибкости
-		log.Printf("Restore logs for %s:\n%s", baseName, output)
+	if len(output) > 0 {
+		p.f.Warning("Restore completed with messages:\n%s", output)
 	}
+
 	return nil
 }
 

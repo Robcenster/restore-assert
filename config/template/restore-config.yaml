@@ -86,7 +86,13 @@ asserts: # Logical validation checks
       condition: "gt"
       expected: "1000000"
 
-    - name: "Orphaned Profiles" # Data consistency (checking for orphans)
+    # Пример: Проверка консистентности (отсутствие "сирот").
+    - name: "Orphaned Profiles"
       query: "SELECT count(*)::text FROM profiles p LEFT JOIN users u ON p.user_id = u.id WHERE u.id IS NULL"
+      condition: "eq"
+      expected: "0"
+
+    - name: "Кастомная проверка"
+      query: "SELECT count(*) FROM inventoris.Tests"
       condition: "eq"
       expected: "0"
