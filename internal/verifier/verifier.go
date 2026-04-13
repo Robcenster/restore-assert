@@ -37,7 +37,6 @@ type AssertTask struct {
 func (v *Verifier) CreateTasks(asserts config.Asserts) []AssertTask {
 	var tasks []AssertTask
 
-
 	// 1. Быстрые проверки существования
 	for _, ext := range asserts.Existence.Extensions {
 		tasks = append(tasks, AssertTask{Name: "Extension: " + ext, Type: "existence_ext", Target: ext})
@@ -100,11 +99,10 @@ func (v *Verifier) CreateTasks(asserts config.Asserts) []AssertTask {
 		})
 	}
 
-
 	return tasks
 }
 
-// RunAssert выполняет одну конкретную задачу и возвращает (success, error)
+// TODO: too strong binding with POSTGRESQL
 func (v *Verifier) RunAssert(ctx context.Context, task AssertTask) (bool, error) {
 	var query string
 	var expected = task.Expected

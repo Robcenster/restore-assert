@@ -4,7 +4,7 @@ import (
 	"context"
 )
 
-type Provider interface {
+type Container interface {
 	Start(ctx context.Context) error
 	ExecuteRestore(ctx context.Context, hostFilePath string) error
 	GetConnectionString() string

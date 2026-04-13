@@ -9,7 +9,7 @@ import (
 // Compare сравнивает фактическое значение (из БД) и ожидаемое (из конфига)
 func Compare(actual string, expected any, condition string) (bool, error) {
 	if condition == "" {
-		condition = "eq" // По умолчанию строгое равенство
+		condition = "eq" // by default check equality
 	}
 
 	// Стратегия приведения к строке: всё, что пришло из YAML, превращаем в string

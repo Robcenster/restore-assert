@@ -12,6 +12,8 @@ type EngineType string
 const (
 	EnginePostgres EngineType = "postgres"
 	EngineMSSQL    EngineType = "mssql"
+
+	defaultConfigPath = "restore-config.yaml"
 )
 
 type Config struct {
@@ -24,8 +26,7 @@ type Config struct {
 
 type Docker struct {
 	Image string `yaml:"image" env:"DOCKER_IMAGE" env-default:"postgres:17-alpine"`
-
-	// TODO: Генерировать UUID?
+	// TODO: Just always generate UUID for random name?
 	ContainerName string `yaml:"container_name" env:"CONTAINER_NAME" env-default:"restore-assert-pg"`
 	MemoryLimit   string `yaml:"memory_limit" env-default:"1GB"`
 	AutoRemove    bool   `yaml:"auto_remove" env-default:"true"`
@@ -50,9 +51,9 @@ type Restore struct {
 	NoOwner           bool `yaml:"no_owner"`
 	NoPrivileges      bool `yaml:"no_privileges"`
 	ModifyTemplate    bool `yaml:"modify_template"`
-	FullRestoreLogs   bool `yaml:"full_restore_logs"`
-	ShowDatabaseInfo  bool `yaml:"show_db_info"`
-	HideSuccessTests  bool `yaml:"hide_success_tests"`
+	ShowRestoreLogs   bool `yaml:"full_restore_logs" env-default:"false"`
+	ShowDatabaseInfo  bool `yaml:"show_db_info" env-default:"false"`
+	ShowSuccessTests  bool `yaml:"hide_success_tests" env-default:"false"`
 }
 
 type Asserts struct {
@@ -98,9 +99,8 @@ type Query struct {
 }
 
 func Load(path string) (*Config, error) {
-	// Если путь не передан, попробуем взять дефолтный файл
 	if path == "" {
-		path = "restore-config.yaml"
+		path = defaultConfigPath
 	}
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {

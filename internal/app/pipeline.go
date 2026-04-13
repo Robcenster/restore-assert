@@ -13,14 +13,14 @@ import (
 )
 
 type Pipeline struct {
-	container container.Provider
+	container container.Container
 	repo      repository.DBRepository
 	cfg       *config.Config
 	verifier  *verifier.Verifier
 	formatter formatter.Formatter
 }
 
-func NewPipeline(ct container.Provider, repo repository.DBRepository, cfg *config.Config, f formatter.Formatter) *Pipeline {
+func NewPipeline(ct container.Container, repo repository.DBRepository, cfg *config.Config, f formatter.Formatter) *Pipeline {
 	return &Pipeline{
 		container: ct,
 		repo:      repo,
@@ -53,17 +53,15 @@ func (p *Pipeline) RunCheck(ctx context.Context, backupPath string) error {
 	p.formatter.Step("Running asserts")
 	failedAssertCount := 0
 
-	// Проверяем, есть ли хоть одна проверка внутри объекта Asserts
 	if len(p.cfg.Asserts.Existence.Extensions) == 0 &&
 		len(p.cfg.Asserts.Tables) == 0 {
 
 		p.formatter.Info("No logical tests have been added")
+		fmt.Println("No logic tests in config file")
+		return nil
 	}
 
-	// Превращаем вложенный конфиг в плоский список задач
 	tasks := p.verifier.CreateTasks(p.cfg.Asserts)
-
-	// ТВОЙ ОРИГИНАЛЬНЫЙ ЦИКЛ, но теперь перебирает tasks
 	for _, assert := range tasks {
 		success, err := p.verifier.RunAssert(ctx, assert)
 		if err != nil && !success {
@@ -74,7 +72,7 @@ func (p *Pipeline) RunCheck(ctx context.Context, backupPath string) error {
 		if !success {
 			p.formatter.Error("Failed: %s", assert.Name)
 			failedAssertCount++
-		} else if !p.cfg.Restore.HideSuccessTests {
+		} else if p.cfg.Restore.ShowSuccessTests {
 			p.formatter.Success("%s", assert.Name)
 		}
 

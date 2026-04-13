@@ -1,3 +1,4 @@
+// Building commands to container
 package postgres
 
 import (
@@ -7,7 +8,7 @@ import (
 	"github.com/Robcenster/restore-assert/internal/config"
 )
 
-// buildRestoreCommand строит команду для восстановления в зависимости от типа дампа и передаваемых параметров в конфиге
+// TODO: Clean comments up, use consts, change to english
 func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType BackupType, containerPath string) ([]string, error) {
 	if containerPath == "" {
 		return nil, fmt.Errorf("container path cannot be empty")
@@ -31,7 +32,7 @@ func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType Backu
 			"-d", dbCfg.DBName,
 		}
 
-		if rCfg.FullRestoreLogs {
+		if rCfg.ShowRestoreLogs {
 			cmd = append(cmd, "-v")
 		}
 
@@ -86,8 +87,8 @@ func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType Backu
 			"-d", dbCfg.DBName,
 		}
 
-		if rCfg.FullRestoreLogs {
-			cmd = append(cmd, "-a")
+		if rCfg.ShowRestoreLogs {
+			cmd = append(cmd, "-a") // Аналог -v в psql: echo-all (выводит все запросы)
 		}
 		if rCfg.OnErrorStop {
 			cmd = append(cmd, "-v", "ON_ERROR_STOP=1")
@@ -111,7 +112,7 @@ func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType Backu
 			"-d", "postgres", // 'postgres' тут только как точка входа
 		}
 
-		if rCfg.FullRestoreLogs {
+		if rCfg.ShowRestoreLogs {
 			cmd = append(cmd, "-a")
 		}
 		if rCfg.OnErrorStop {
