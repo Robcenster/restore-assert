@@ -25,7 +25,6 @@ func Execute() {
 	rootCmd.AddCommand(
 		NewCheckCmd(),
 		NewInitCmd(),
-		NewInspectCmd(),
 		NewVersionCmd(),
 	)
 
@@ -46,15 +45,14 @@ func NewVersionCmd() *cobra.Command {
 }
 
 const simplifiedHelpTemplate = `
-Usage:{{if .Runnable}}
-  {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
-  {{.CommandPath}} [command]{{end}}
+	Usage:{{if .Runnable}}
+	{{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
+	{{.CommandPath}} [command]{{end}}
 
-Available Commands:{{range .Commands}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
-  {{rpad .Name .NamePadding}} {{.Short}}{{end}}{{end}}
+	Available Commands:{{range .Commands}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
+	{{rpad .Name .NamePadding}} {{.Short}}{{end}}{{end}}
 
-Flags:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
+	Flags:
+	{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
 
-Use "{{.CommandPath}} [command] --help" for more information about a command.
-`
+	Use "{{.CommandPath}} [command] --help" for more information about a command.`

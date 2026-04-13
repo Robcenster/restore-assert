@@ -7,6 +7,29 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// TODO: path, name
+func NewInitCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "init",
+		Short: "Initialize a new restore-config.yaml",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			filename := "restore-config.yaml"
+
+			if _, err := os.Stat(filename); err == nil {
+				return fmt.Errorf("config file '%s' already exists", filename)
+			}
+
+			err := os.WriteFile(filename, []byte(defaultConfigTemplate), 0644)
+			if err != nil {
+				return fmt.Errorf("failed to create config: %w", err)
+			}
+
+			fmt.Printf("✨ Created %s with default settings\n", filename)
+			return nil
+		},
+	}
+}
+
 const defaultConfigTemplate = `engine: "postgres" # DBType: postgres/mssql/oracle etc
 
 docker:
@@ -52,25 +75,3 @@ restore:
 #           condition: "gt"
 #           expected: 100
 `
-
-func NewInitCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "init",
-		Short: "Initialize a new restore-config.yaml",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			filename := "restore-config.yaml"
-
-			if _, err := os.Stat(filename); err == nil {
-				return fmt.Errorf("config file '%s' already exists", filename)
-			}
-
-			err := os.WriteFile(filename, []byte(defaultConfigTemplate), 0644)
-			if err != nil {
-				return fmt.Errorf("failed to create config: %w", err)
-			}
-
-			fmt.Printf("✨ Created %s with default settings\n", filename)
-			return nil
-		},
-	}
-}
