@@ -62,9 +62,9 @@ restore:
   single_transaction: false # Use a single transaction for the whole restore
   no_owner: true # Skip restoration of object ownership
   no_privileges: true # Skip restoration of access privileges (GRANT/REVOKE)
-  full_restore_logs: false # Print verbose logs from restore utilities
+  show_restore_logs: false # Print verbose logs from restore utilities
   show_db_info: true # Display database summary after restore
-  hide_success_tests: false # Only show failed assertions in the report
+  show_success_tests: false # Only show failed assertions in the report
 
 # Logical validation checks (Commented out by default)
 # asserts:
