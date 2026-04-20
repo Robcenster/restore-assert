@@ -3,6 +3,7 @@ package verifier
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Robcenster/restore-assert/internal/config"
@@ -102,70 +103,115 @@ func (v *Verifier) CreateTasks(asserts config.Asserts) []AssertTask {
 	return tasks
 }
 
-// TODO: too strong binding with POSTGRESQL
+// quoteIdentifier корректно обрабатывает имена типа "public.movies" -> "public"."movies"
+func (v *Verifier) quoteIdentifier(target string) string {
+	parts := strings.Split(target, ".")
+	for i, part := range parts {
+		parts[i] = fmt.Sprintf(`"%s"`, part)
+	}
+	return strings.Join(parts, ".")
+}
+
 func (v *Verifier) RunAssert(ctx context.Context, task AssertTask) (bool, error) {
 	var query string
 	var expected = task.Expected
 	var condition = task.Condition
 
-	// Генерируем SQL в зависимости от типа задачи
+	// Подготавливаем безопасно закавыченное имя таблицы/объекта
+	// "movies" -> "movies", "public.movies" -> "public"."movies"
+	quotedTarget := v.quoteIdentifier(task.Target)
+
 	switch task.Type {
 	case "existence_ext":
 		query = fmt.Sprintf("SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = '%s')::text", task.Target)
 		condition, expected = "eq", "true"
+
 	case "existence_role":
 		query = fmt.Sprintf("SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = '%s')::text", task.Target)
 		condition, expected = "eq", "true"
+
 	case "existence_schema":
 		query = fmt.Sprintf("SELECT EXISTS(SELECT 1 FROM information_schema.schemata WHERE schema_name = '%s')::text", task.Target)
 		condition, expected = "eq", "true"
+
 	case "row_count":
-		query = fmt.Sprintf(`SELECT count(*)::text FROM "%s"`, task.Target)
+		// Используем уже закавыченный таргет без лишних кавычек в fmt
+		query = fmt.Sprintf("SELECT count(*)::text FROM %s", quotedTarget)
+
 	case "table_size":
-		query = fmt.Sprintf(`SELECT pg_total_relation_size('"%s"')::text`, task.Target)
-		// Конвертируем строку вида "50MB" в байты через БД
+		// regclass — самый надежный способ сослаться на таблицу в Postgres
+		query = fmt.Sprintf("SELECT pg_total_relation_size('%s'::regclass)::text", quotedTarget)
+
 		bytesQuery := fmt.Sprintf("SELECT pg_size_bytes('%v')::text", task.Expected)
 		expectedStr, err := v.source.ExecuteQuery(ctx, bytesQuery)
 		if err != nil {
-			return false, fmt.Errorf("invalid table_size expected format: %v", err)
+			return false, fmt.Errorf("invalid table_size format '%v': %v", task.Expected, err)
 		}
 		expected = expectedStr
+
 	case "null_ratio":
-		query = fmt.Sprintf(`SELECT COALESCE((COUNT(CASE WHEN "%s" IS NULL THEN 1 END)::float / NULLIF(COUNT(*), 0)), 0)::text FROM "%s"`, task.Column, task.Target)
+		// Используем FILTER для чистоты кода (Postgres 9.4+)
+		query = fmt.Sprintf(
+			`SELECT (COUNT(*) FILTER (WHERE "%s" IS NULL)::float / NULLIF(COUNT(*), 0))::text FROM %s`,
+			task.Column, quotedTarget,
+		)
 		condition, expected = "lt", task.MaxPercent
+
 	case "privilege":
+		// has_table_privilege принимает имя таблицы как строку, она сама разберется со схемами
 		query = fmt.Sprintf("SELECT has_table_privilege('%s', '%s', '%s')::text", task.Role, task.Target, task.Action)
 		condition, expected = "eq", fmt.Sprintf("%t", task.IsAllowed)
+
 	case "query":
 		query = task.Query
+
 	case "freshness":
-		query = fmt.Sprintf(`SELECT max("%s")::text FROM "%s"`, task.Column, task.Target)
+		query = fmt.Sprintf(`SELECT max("%s")::text FROM %s`, task.Column, quotedTarget)
 		actualRaw, err := v.source.ExecuteQuery(ctx, query)
 		if err != nil {
 			return false, err
 		}
+		// Если в таблице нет данных, max() вернет NULL
+		if actualRaw == "" || actualRaw == "null" {
+			return false, fmt.Errorf("freshness check failed: table is empty or column has only NULLs")
+		}
+
 		lastDate, err := time.Parse(time.RFC3339, actualRaw)
 		if err != nil {
-			return false, fmt.Errorf("cannot parse time from db: %w", err)
+			// Пробуем распарсить стандартный формат Postgres, если RFC3339 не прошел
+			lastDate, err = time.Parse("2006-01-02 15:04:05", strings.Split(actualRaw, ".")[0])
+			if err != nil {
+				return false, fmt.Errorf("cannot parse time '%s': %w", actualRaw, err)
+			}
 		}
 		maxAge, _ := time.ParseDuration(task.MaxAge)
 		if time.Since(lastDate) > maxAge {
-			return false, fmt.Errorf("data is older than %v", task.MaxAge)
+			return false, fmt.Errorf("data is too old: last entry %v", lastDate.Format(time.RFC822))
 		}
-		return true, nil // Freshness проверена временем, SQL-компаратор не нужен
-	case "sequence_health":
-		// Заглушка, чтобы не падало
 		return true, nil
+
+	case "sequence_health":
+		// Используем pg_get_serial_sequence, чтобы найти сиквенс, привязанный к колонке id
+		// Это универсальный способ для Postgres
+		query = fmt.Sprintf(`
+        SELECT (
+            last_value < (SELECT MAX(id) FROM %s)
+        )::text 
+        FROM pg_sequences 
+        WHERE schemaname = quote_ident(COALESCE(NULLIF(split_part('%s', '.', 1), '%s'), 'public'))
+        AND tablename = quote_ident(COALESCE(NULLIF(split_part('%s', '.', 2), ''), '%s'))`,
+			quotedTarget, task.Target, task.Target, task.Target, task.Target,
+		)
+		condition, expected = "eq", "false"
+
 	default:
 		return false, fmt.Errorf("unknown task type: %s", task.Type)
 	}
 
-	// Выполняем сгенерированный SQL
 	actualRaw, err := v.source.ExecuteQuery(ctx, query)
 	if err != nil {
-		return false, fmt.Errorf("query execution error: %w", err)
+		return false, fmt.Errorf("db error: %w", err)
 	}
 
-	// Отдаем в твой comparator
 	return Compare(actualRaw, expected, condition)
 }

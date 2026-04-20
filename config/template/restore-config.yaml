@@ -7,16 +7,16 @@ docker:
   cpu_limit: "1.0" # CPU core limit (e.g., 0.5, 1.0)
 
 database:
-  db_name: "postgres" # Target database name
+  # db_name: "cinema" # Target database name
   user: "admin" # Database administrative user
   password: "very_secret_password" # Administrative password
   extensions: # List of required PostgreSQL extensions
     - "uuid-ossp"
     - "pg_trgm"
+    - "pg_stat_statements"
   roles: # Roles to be created before restoration
-    - "postgres"
-    - "warehouse_analyst"
-    - "warehouse_app_user"
+    - "app_admin"
+    - "app_readonly"
 
   settings: # Custom postgresql.conf parameters (via -c flags)
     max_connections: "50" # Maximum concurrent connections
@@ -28,71 +28,80 @@ restore:
   analyze: true # Run ANALYZE to update statistics after restore
   on_error_stop: true
   single_transaction: false # Use a single transaction for the whole restore
-  no_owner: true # Skip restoration of object ownership
-  no_privileges: true # Skip restoration of access privileges (GRANT/REVOKE)
+  no_owner: false # Skip restoration of object ownership
+  no_privileges: false # Skip restoration of access privileges (GRANT/REVOKE)
   show_restore_logs: false # Print verbose logs from restore utilities
   show_db_info: true # Display database summary after restore
-  show_success_tests: false # Only show failed assertions in the report
+  show_success_tests: true # Only show failed assertions in the report
+  # modify_template: true # If the file extension error persists 
 
-asserts: # Logical validation checks
-  # 1. Quick existence checks for DB objects
+asserts:
+  # 1. Быстрые проверки существования объектов
   existence:
-    extensions: ["uuid-ossp", "pg_stat_statements"] # Verify extensions
-    roles: ["app_writer", "app_readonly"] # Verify roles
-    schemas: ["public", "audit"] # Verify schemas
+    extensions: ["uuid-ossp", "pg_stat_statements", "pg_trgm"]
+    roles: ["app_admin", "app_readonly"]
+    schemas: ["public", "audit"]
 
-  # 2. Table integrity and volume checks
+  # 2. Интегрити таблиц, объем данных и качество
   tables:
-    - name: "users"
+    - name: "public.movies"
       metrics:
-        - type: "row_count" # Check number of records
-          condition: "gt" # Comparison: eq, gt, lt, not_empty
-          expected: 100 
-          
-        - type: "table_size" # Check physical table size
+        - type: "row_count"
+          condition: "eq"
+          expected: 1000
+
+        - type: "table_size"
           condition: "gt"
-          expected: "50MB"
+          expected: "50KB" # 1000 записей с UUID и строками точно превысят 50KB
 
-        - type: "sequence_health" # Verify that sequences match MAX(id)
-          severity: "error"
+        - type: "freshness"
+          column: "created_at"
+          max_age: "24h" # Данные генерируются с отставанием максимум в 12 часов
 
-    - name: "orders"
+        - type: "null_ratio"
+          column: "release_year"
+          max_percent: 0.05 # Мы заложили около 2% NULL значений в скрипте
+
+    - name: "audit.logs"
       metrics:
-        - type: "row_count" # Default condition is 'eq'
-          expected: 1000 
+        - type: "row_count"
+          condition: "eq"
+          expected: 100
 
-        - type: "freshness" # Check if data is up-to-date
-          column: "created_at" # Date/time column for check
-          max_age: "24h" # Max allowed age of the newest record
 
-  # 3. Data quality checks (e.g., corruption or partial exports)
-    - name: "transactions"
+    - name: "public.movie_facts"
       metrics:
-        - type: "null_ratio" # Check percentage of NULL values in a column
-          column: "payout_gateway_id"
-          max_percent: 0.05 # Max 5% NULLs allowed
+        - type: "row_count"
+          condition: "eq"
+          expected: 500
 
-  # 4. Security and permission auditing
+  # 3. Аудит безопасности и прав доступа
   privileges:
     - role: "app_readonly"
-      table: "salaries"
-      allowed: ["SELECT"] # Exactly these permissions are allowed
-      forbidden: ["INSERT", "UPDATE", "DELETE"] # These must NOT exist
+      table: "public.movies"
+      allowed: ["SELECT"]
+      forbidden: ["INSERT", "UPDATE", "DELETE", "TRUNCATE"]
 
-  # 5. Custom SQL assertions
+    - role: "app_readonly"
+      table: "public.movie_facts"
+      allowed: ["SELECT"]
+      forbidden: ["INSERT", "UPDATE", "DELETE"]
+
+  # 4. Кастомные SQL-проверки (Бизнес-логика и консистентность)
   queries:
-    - name: "Check Total Revenue" # Business logic validation
-      query: "SELECT sum(amount)::text FROM orders WHERE status = 'paid'"
-      condition: "gt"
-      expected: "1000000"
-
-    # Пример: Проверка консистентности (отсутствие "сирот").
-    - name: "Orphaned Profiles"
-      query: "SELECT count(*)::text FROM profiles p LEFT JOIN users u ON p.user_id = u.id WHERE u.id IS NULL"
+    - name: "Орфанные факты (Отсутствуют ссылки на фильмы)"
+      query: "SELECT count(*)::text FROM public.movie_facts f LEFT JOIN public.movies m ON f.movie_id = m.id WHERE m.id IS NULL"
       condition: "eq"
       expected: "0"
 
-    - name: "Кастомная проверка"
-      query: "SELECT count(*) FROM inventoris.Tests"
+    - name: "Проверка наличия верифицированных администратором фактов"
+      # Убеждаемся, что хотя бы 50 фактов прошли модерацию (мы заложили ~30% от 500, то есть ~150)
+      query: "SELECT (count(*) > 50)::text FROM public.movie_facts WHERE is_verified = true"
+      condition: "eq"
+      expected: "true"
+
+    - name: "Отсутствие дубликатов в логах аудита"
+      # Проверяем, что нет записей с одинаковым ID (дополнительная страховка целостности)
+      query: "SELECT (count(id) - count(DISTINCT id))::text FROM audit.logs"
       condition: "eq"
       expected: "0"
