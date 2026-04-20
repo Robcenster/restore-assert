@@ -30,6 +30,7 @@ func NewPostgresContainer(cfg *config.Config, f formatter.Formatter) *PostgresCo
 	return &PostgresContainer{cfg: cfg, f: f}
 }
 
+// Launching a temporary container
 func (p *PostgresContainer) Start(ctx context.Context) error {
 	// Testcontainers panic guard
 	defer func() {
@@ -76,7 +77,7 @@ func (p *PostgresContainer) Start(ctx context.Context) error {
 	return nil
 }
 
-// ExecuteRestore делает всю грязную работу по заливке бэкапа
+// ExecuteRestore handles all the tedious work involved in creating a backup
 func (p *PostgresContainer) ExecuteRestore(ctx context.Context, hostFilePath string) error {
 	// Preliminary check on the hosting service
 	absPath, err := filepath.Abs(hostFilePath)
@@ -136,7 +137,6 @@ func (p *PostgresContainer) ExecuteRestore(ctx context.Context, hostFilePath str
 	if exitCode != 0 {
 		if len(output) > 0 {
 			p.f.Error("Restore command failed with exit code %d. Details:", exitCode)
-			// Выводим логи через Info, чтобы они были с приятным отступом
 			p.f.Info("--- DUMP LOGS ---\n%s\n-----------------", output)
 		}
 		return fmt.Errorf("restore failed (exit code %d)", exitCode)

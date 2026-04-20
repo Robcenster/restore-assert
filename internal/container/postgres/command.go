@@ -8,13 +8,13 @@ import (
 	"github.com/Robcenster/restore-assert/internal/config"
 )
 
-// TODO: Clean comments up, use consts, change to english
+// BuildRestoreCommand for determining the type of an SQL dump
 func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType BackupType, containerPath string) ([]string, error) {
 	if containerPath == "" {
 		return nil, fmt.Errorf("container path cannot be empty")
 	}
 
-	// Если это не дамп всего кластера, требуем данные для подключения из конфига
+	// If this is not a dump of the entire cluster, we need the connection details from the configuration file
 	if bType != TypeDumpAll {
 		if dbCfg.User == "" || dbCfg.DBName == "" {
 			return nil, fmt.Errorf("restore error: database user and name must be set")
@@ -24,8 +24,7 @@ func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType Backu
 	var cmd []string
 
 	switch bType {
-	case TypeCustom, TypeTar, TypeDirectory:
-		// === Бинарные форматы (pg_restore) ===
+	case TypeCustom, TypeTar, TypeDirectory: // Binary formats
 		cmd = []string{
 			"pg_restore",
 			"-U", dbCfg.User,
@@ -36,7 +35,6 @@ func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType Backu
 			cmd = append(cmd, "-v")
 		}
 
-		// Определение формата
 		switch bType {
 		case TypeCustom:
 			cmd = append(cmd, "-Fc")
@@ -46,7 +44,6 @@ func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType Backu
 			cmd = append(cmd, "-Ft")
 		}
 
-		// Игнорирование владельцев и привилегий
 		if rCfg.NoOwner {
 			cmd = append(cmd, "--no-owner")
 		}
@@ -54,19 +51,14 @@ func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType Backu
 			cmd = append(cmd, "--no-acl")
 		}
 
-		// Останавливаться при первой ошибке (Исправлено: для pg_restore это --exit-on-error)
 		if rCfg.OnErrorStop {
 			cmd = append(cmd, "--exit-on-error")
 		}
 
-		// === Сложная логика потоков и транзакций ===
-
-		// 1. Проверка для TAR формата (pg_restore не умеет восстанавливать TAR в несколько потоков)
 		if bType == TypeTar && rCfg.ParallelJobs > 1 {
 			return nil, fmt.Errorf("pg_restore does not support parallel_jobs with TAR format")
 		}
 
-		// 2. Проверка конфликта: параллельность vs транзакция
 		if rCfg.ParallelJobs > 1 && rCfg.SingleTransaction {
 			return nil, fmt.Errorf("cannot use parallel_jobs (>1) and single_transaction simultaneously")
 		}
@@ -79,8 +71,7 @@ func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType Backu
 
 		cmd = append(cmd, containerPath)
 
-	case TypePlain:
-		// === Текстовый формат (psql) ===
+	case TypePlain: // Text format
 		cmd = []string{
 			"psql",
 			"-U", dbCfg.User,
@@ -88,7 +79,7 @@ func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType Backu
 		}
 
 		if rCfg.ShowRestoreLogs {
-			cmd = append(cmd, "-a") // Аналог -v в psql: echo-all (выводит все запросы)
+			cmd = append(cmd, "-a")
 		}
 		if rCfg.OnErrorStop {
 			cmd = append(cmd, "-v", "ON_ERROR_STOP=1")
@@ -99,8 +90,7 @@ func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType Backu
 
 		cmd = append(cmd, "-f", containerPath)
 
-	case TypeDumpAll:
-		// === Дамп кластера (psql) ===
+	case TypeDumpAll: // Cluster dump
 		user := dbCfg.User
 		if user == "" {
 			user = "postgres"
@@ -109,7 +99,7 @@ func buildRestoreCommand(dbCfg config.Database, rCfg config.Restore, bType Backu
 		cmd = []string{
 			"psql",
 			"-U", user,
-			"-d", "postgres", // 'postgres' тут только как точка входа
+			"-d", "postgres", 
 		}
 
 		if rCfg.ShowRestoreLogs {

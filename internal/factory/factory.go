@@ -12,7 +12,7 @@ import (
 	repo "github.com/Robcenster/restore-assert/internal/repository/postgres"
 )
 
-// TODO: maybe join in one func NewProvider() (container, repo)?
+
 func NewContainerProvider(cfg *config.Config, f formatter.Formatter) (container.Container, error) {
 	switch cfg.Engine {
 	case config.EnginePostgres:

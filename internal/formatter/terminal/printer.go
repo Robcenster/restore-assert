@@ -9,7 +9,7 @@ import (
 	"github.com/Robcenster/restore-assert/internal/formatter"
 )
 
-// Цвета ANSI (без жирного шрифта, как договаривались)
+// Colors ANSI
 const (
 	reset  = "\033[0m"
 	red    = "\033[31m"
@@ -19,68 +19,64 @@ const (
 	blue   = "\033[34m"
 )
 
-// Printer реализует интерфейс formatter.Formatter для терминала.
 type Printer struct {
 	out io.Writer
 }
 
-// NewPrinter создает новый форматер для терминала.
 func NewPrinter(w io.Writer) *Printer {
 	return &Printer{
 		out: w,
 	}
 }
 
-// Info выводит обычное информационное сообщение
+// Info displays a standard message
 func (p *Printer) Info(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
-	fmt.Fprintf(p.out, "  %s\n", msg) // Отступ для красоты
+	fmt.Fprintf(p.out, "  %s\n", msg)
 }
 
-// Step визуально выделяет начало нового этапа работы
+// Step visually marks the start of a new phase of work
 func (p *Printer) Step(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
-	// Используем синий цвет и стрелочку для индикации шага
 	fmt.Fprintf(p.out, "%s==>%s %s\n", blue, reset, msg)
 }
 
-// Success выводит сообщение об успехе (зеленым)
+// Success displays a success message (in green)
 func (p *Printer) Success(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Fprintf(p.out, "%sSUCCESS:%s %s\n", green, reset, msg)
 }
 
-// Error выводит сообщение об ошибке (красным)
+// Error displays an error message (in red)
 func (p *Printer) Error(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Fprintf(p.out, "%sERROR:%s %s\n", red, reset, msg)
 }
 
-// Warning выводит предупреждение (желтым)
+// Warning displays a warning (in yellow)
 func (p *Printer) Warning(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Fprintf(p.out, "%sWARNING:%s %s\n", yellow, reset, msg)
 }
 
-// PrintClusterReport выводит дерево базы данных
+// PrintClusterReport displays the database tree
 func (p *Printer) PrintClusterReport(cluster *formatter.ClusterSnapshot) {
-	p.Info("") // Пустая строка
+	p.Info("")
 	separator := strings.Repeat("=", 60)
 
 	fmt.Fprintf(p.out, "%s%s%s\n", cyan, separator, reset)
-	fmt.Fprintf(p.out, "🏗️  %sPOSTGRES CLUSTER:%s %s\n", yellow, reset, cluster.Version)
-	fmt.Fprintf(p.out, "👥 %sROLES:%s            %s\n", yellow, reset, strings.Join(cluster.Roles, ", "))
+	fmt.Fprintf(p.out, "%sPOSTGRES CLUSTER:%s %s\n", yellow, reset, cluster.Version)
+	fmt.Fprintf(p.out, "%sROLES:%s            %s\n", yellow, reset, strings.Join(cluster.Roles, ", "))
 	fmt.Fprintf(p.out, "%s%s%s\n", cyan, separator, reset)
 
 	for _, db := range cluster.Databases {
 		if len(db.Schemas) == 0 {
-			fmt.Fprintf(p.out, "\n📦 DB: %s[%s]%s (no tables)\n", cyan, db.Name, reset)
+			fmt.Fprintf(p.out, "\nDB: %s[%s]%s (no tables)\n", cyan, db.Name, reset)
 			continue
 		}
 
-		fmt.Fprintf(p.out, "\n📊 DB: %s[%s]%s\n", cyan, db.Name, reset)
+		fmt.Fprintf(p.out, "\nDB: %s[%s]%s\n", cyan, db.Name, reset)
 
-		// Сортируем схемы
 		sNames := make([]string, 0, len(db.Schemas))
 		for s := range db.Schemas {
 			sNames = append(sNames, s)
@@ -88,7 +84,7 @@ func (p *Printer) PrintClusterReport(cluster *formatter.ClusterSnapshot) {
 		sort.Strings(sNames)
 
 		for _, sName := range sNames {
-			fmt.Fprintf(p.out, "  📂 Schema: %s%s%s\n", yellow, sName, reset)
+			fmt.Fprintf(p.out, "  Schema: %s%s%s\n", yellow, sName, reset)
 			tables := db.Schemas[sName]
 
 			for i, tName := range tables {

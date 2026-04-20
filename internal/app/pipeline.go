@@ -44,7 +44,7 @@ func (p *Pipeline) RunCheck(ctx context.Context, backupPath string) error {
 	if p.cfg.Restore.Analyze {
 		p.formatter.Step("Run ANALYZE (collect statistics)")
 		if err := p.repo.Analyze(ctx); err != nil {
-			p.formatter.Warning("⚠️ Warning ANALYZE: %v", err)
+			p.formatter.Warning("Warning ANALYZE: %v", err)
 		} else {
 			p.formatter.Success("Database statistics have been updated!")
 		}
@@ -94,6 +94,7 @@ func (p *Pipeline) RunCheck(ctx context.Context, backupPath string) error {
 	return nil
 }
 
+// prepareEnvironment for preparing roles and extensions prior to restoration
 func (p *Pipeline) prepareEnvironment(ctx context.Context) error {
 	if len(p.cfg.Database.Roles) > 0 {
 		p.formatter.Step("Сreating database roles")

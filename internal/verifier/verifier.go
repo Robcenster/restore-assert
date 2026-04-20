@@ -104,7 +104,7 @@ func (v *Verifier) CreateTasks(asserts config.Asserts) []AssertTask {
 	return tasks
 }
 
-// quoteIdentifier корректно обрабатывает имена типа "public.movies" -> "public"."movies"
+// QoteIdentifier correctly processes names such as "public.movies" -> "public"."movies"
 func (v *Verifier) quoteIdentifier(target string) string {
 	parts := strings.Split(target, ".")
 	for i, part := range parts {
@@ -113,7 +113,7 @@ func (v *Verifier) quoteIdentifier(target string) string {
 	return strings.Join(parts, ".")
 }
 
-// Вспомогательная функция для защиты от "ломающих" одинарных кавычек в именах
+// EscapeLiteral to prevent single quotes from "breaking" usernames
 func escapeLiteral(val string) string {
 	return strings.ReplaceAll(val, "'", "''")
 }
@@ -123,8 +123,6 @@ func (v *Verifier) RunAssert(ctx context.Context, task AssertTask) (bool, error)
 	var expected = task.Expected
 	var condition = task.Condition
 
-	// Подготавливаем безопасно закавыченное имя таблицы/объекта
-	// "movies" -> "movies", "public.movies" -> "public"."movies"
 	quotedTarget := v.quoteIdentifier(task.Target)
 
 	switch task.Type {
@@ -144,7 +142,6 @@ func (v *Verifier) RunAssert(ctx context.Context, task AssertTask) (bool, error)
 		query = fmt.Sprintf("SELECT count(*)::text FROM %s", quotedTarget)
 
 	case "table_size":
-		// regclass — самый надежный способ сослаться на таблицу
 		query = fmt.Sprintf("SELECT pg_total_relation_size('%s'::regclass)::text", escapeLiteral(quotedTarget))
 
 		bytesQuery := fmt.Sprintf("SELECT pg_size_bytes('%v')::text", escapeLiteral(fmt.Sprintf("%v", task.Expected)))
@@ -155,9 +152,6 @@ func (v *Verifier) RunAssert(ctx context.Context, task AssertTask) (bool, error)
 		expected = expectedStr
 
 	case "null_ratio":
-		// Используем стандартный ANSI SQL (CASE WHEN), который работает на ВСЕХ версиях СУБД,
-		// в отличие от FILTER, который появился только в PG 9.4.
-		// Добавлен COALESCE на весь результат, чтобы избежать NULL при пустой таблице.
 		query = fmt.Sprintf(
 			`SELECT COALESCE(SUM(CASE WHEN "%s" IS NULL THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0), 0)::text FROM %s`,
 			task.Column, quotedTarget,
@@ -165,8 +159,6 @@ func (v *Verifier) RunAssert(ctx context.Context, task AssertTask) (bool, error)
 		condition, expected = "lt", task.MaxPercent
 
 	case "privilege":
-		// Передаем quotedTarget, чтобы has_table_privilege не споткнулся о CamelCase таблицы.
-		// БД распарсит строку '"public"."movies"' правильно и проверит права.
 		query = fmt.Sprintf("SELECT has_table_privilege('%s', '%s', '%s')::text",
 			escapeLiteral(task.Role), escapeLiteral(quotedTarget), escapeLiteral(task.Action))
 		condition, expected = "eq", fmt.Sprintf("%t", task.IsAllowed)
@@ -175,8 +167,6 @@ func (v *Verifier) RunAssert(ctx context.Context, task AssertTask) (bool, error)
 		query = task.Query
 
 	case "freshness":
-		// Запрашиваем Unix Timestamp (секунды). Это железобетонно защищает нас
-		// от любых проблем с настройками DateStyle и TimeZone на стороне сервера Postgres.
 		query = fmt.Sprintf(`SELECT EXTRACT(EPOCH FROM max("%s"))::text FROM %s`, task.Column, quotedTarget)
 		actualRaw, err := v.source.ExecuteQuery(ctx, query)
 		if err != nil {
@@ -186,7 +176,6 @@ func (v *Verifier) RunAssert(ctx context.Context, task AssertTask) (bool, error)
 			return false, fmt.Errorf("freshness check failed: table is empty or column has only NULLs")
 		}
 
-		// EXTRACT может вернуть дробное значение (например, 1698233.1234), отсекаем микросекунды
 		epochStr := strings.Split(actualRaw, ".")[0]
 		epochInt, err := strconv.ParseInt(epochStr, 10, 64)
 		if err != nil {
