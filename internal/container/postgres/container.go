@@ -56,7 +56,7 @@ func (p *PostgresContainer) Start(ctx context.Context) error {
 		hc.AutoRemove = dCfg.AutoRemove
 		if dCfg.MemoryLimit != "" {
 			mem, _ := units.RAMInBytes(dCfg.MemoryLimit)
-			hc.Resources.Memory = mem
+			hc.Memory = mem
 		}
 	}))
 

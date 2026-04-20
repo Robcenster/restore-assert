@@ -14,9 +14,9 @@ database:
     - "uuid-ossp"
     - "pg_trgm"
     - "pg_stat_statements"
-  roles: # Roles to be created before restoration
-    - "app_admin"
-    - "app_readonly"
+  # roles: # Roles to be created before restoration
+  #   - "app_admin"
+  #   - "app_readonly"
 
   settings: # Custom postgresql.conf parameters (via -c flags)
     max_connections: "50" # Maximum concurrent connections
@@ -33,7 +33,7 @@ restore:
   show_restore_logs: false # Print verbose logs from restore utilities
   show_db_info: true # Display database summary after restore
   show_success_tests: true # Only show failed assertions in the report
-  # modify_template: true # If the file extension error persists 
+  modify_template: true # If the file extension error persists 
 
 asserts:
   # 1. Быстрые проверки существования объектов
