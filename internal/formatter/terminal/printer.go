@@ -62,20 +62,21 @@ func (p *Printer) Warning(format string, args ...any) {
 // PrintClusterReport displays the database tree
 func (p *Printer) PrintClusterReport(cluster *formatter.ClusterSnapshot) {
 	p.Info("")
-	separator := strings.Repeat("=", 60)
+	headerLine := strings.Repeat("-", 64)
+	subLine := strings.Repeat(".", 64)
 
-	fmt.Fprintf(p.out, "%s%s%s\n", cyan, separator, reset)
-	fmt.Fprintf(p.out, "%sPOSTGRES CLUSTER:%s %s\n", yellow, reset, cluster.Version)
-	fmt.Fprintf(p.out, "%sROLES:%s            %s\n", yellow, reset, strings.Join(cluster.Roles, ", "))
-	fmt.Fprintf(p.out, "%s%s%s\n", cyan, separator, reset)
+	fmt.Fprintf(p.out, "%s%s%s\n", cyan, headerLine, reset)
+	fmt.Fprintf(p.out, "%s CLUSTER :%s %s\n", cyan, reset, cluster.Version)
+	fmt.Fprintf(p.out, "%s ROLES   :%s %s\n", cyan, reset, strings.Join(cluster.Roles, ", "))
+	fmt.Fprintf(p.out, "%s%s%s\n", cyan, headerLine, reset)
 
 	for _, db := range cluster.Databases {
+		fmt.Fprintf(p.out, "\n%sDATABASE:%s [%s]\n", yellow, reset, db.Name)
+
 		if len(db.Schemas) == 0 {
-			fmt.Fprintf(p.out, "\nDB: %s[%s]%s (no tables)\n", cyan, db.Name, reset)
+			fmt.Fprintf(p.out, "  (no schemas found)\n")
 			continue
 		}
-
-		fmt.Fprintf(p.out, "\nDB: %s[%s]%s\n", cyan, db.Name, reset)
 
 		sNames := make([]string, 0, len(db.Schemas))
 		for s := range db.Schemas {
@@ -84,17 +85,44 @@ func (p *Printer) PrintClusterReport(cluster *formatter.ClusterSnapshot) {
 		sort.Strings(sNames)
 
 		for _, sName := range sNames {
-			fmt.Fprintf(p.out, "  Schema: %s%s%s\n", yellow, sName, reset)
 			tables := db.Schemas[sName]
+			fmt.Fprintf(p.out, "  %sSCHEMA:%s %s %s(%d tables)%s\n",
+				cyan, reset, sName, blue, len(tables), reset)
 
-			for i, tName := range tables {
-				prefix := "  ├── "
-				if i == len(tables)-1 {
-					prefix = "  └── "
-				}
-				fmt.Fprintf(p.out, "%s%s\n", prefix, tName)
+			if len(tables) > 0 {
+				p.printTableGrid(tables, 4, "    ")
+			} else {
+				fmt.Fprintf(p.out, "    (empty)\n")
 			}
+			fmt.Fprintf(p.out, "  %s%s%s\n", blue, subLine, reset)
 		}
 	}
-	fmt.Fprintf(p.out, "\n%s%s%s\n\n", cyan, separator, reset)
+}
+
+// printTableGrid displays a list of rows in a compact grid
+func (p *Printer) printTableGrid(items []string, columns int, indent string) {
+	if len(items) == 0 {
+		return
+	}
+
+	maxLen := 0
+	for _, item := range items {
+		if len(item) > maxLen {
+			maxLen = len(item)
+		}
+	}
+
+	cellWidth := maxLen + 2
+
+	for i := 0; i < len(items); i++ {
+		if i%columns == 0 {
+			fmt.Print(indent)
+		}
+
+		fmt.Fprintf(p.out, "%-*s", cellWidth, items[i])
+
+		if (i+1)%columns == 0 || i == len(items)-1 {
+			fmt.Fprintln(p.out)
+		}
+	}
 }
