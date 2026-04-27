@@ -2,76 +2,75 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
 
-// TODO: path, name
 func NewInitCmd() *cobra.Command {
-	return &cobra.Command{
+	var fileName string
+	var filePath string
+
+	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Initialize a new restore-config.yaml",
+		Short: "Initialize a new config by copying the template",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			filename := "restore-config.yaml"
+			srcPath := filepath.Join("config", "template", "restore-config.yaml")
 
-			if _, err := os.Stat(filename); err == nil {
-				return fmt.Errorf("config file '%s' already exists", filename)
+			ext := filepath.Ext(fileName)
+			if ext != ".yaml" && ext != ".yml" {
+				return fmt.Errorf("invalid file extension '%s': only .yaml is allowed", ext)
 			}
 
-			err := os.WriteFile(filename, []byte(defaultConfigTemplate), 0644)
-			if err != nil {
-				return fmt.Errorf("failed to create config: %w", err)
+			dstPath := filepath.Join(filePath, fileName)
+
+			if _, err := os.Stat(srcPath); os.IsNotExist(err) {
+				return fmt.Errorf("template file not found at %s. Please ensure it exists", srcPath)
 			}
 
-			fmt.Printf("✨ Created %s with default settings\n", filename)
+			if _, err := os.Stat(dstPath); err == nil {
+				return fmt.Errorf("config file '%s' already exists", dstPath)
+			}
+
+			if err := os.MkdirAll(filePath, 0755); err != nil {
+				return fmt.Errorf("failed to create directory '%s': %w", filePath, err)
+			}
+
+			if err := copyFile(srcPath, dstPath); err != nil {
+				return fmt.Errorf("failed to copy template: %w", err)
+			}
+
+			fmt.Printf("Successfully initialized config: %s\n", dstPath)
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&fileName, "name", "n", "restore-config.yaml", "Name of the configuration file")
+	cmd.Flags().StringVarP(&filePath, "path", "p", "config", "Directory path where the config will be created")
+
+	return cmd
 }
 
-const defaultConfigTemplate = `engine: "postgres" # DBType: postgres/mssql/oracle etc
+// A utility function for copying a file
+func copyFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = sourceFile.Close() }() 
 
-docker:
-  image: "postgres:17-alpine" # Docker image for the temporary environment
-  container_name: "restore-assert-vp" # Name of the spawned container
-  memory_limit: "512MB" # RAM limit for the container
-  cpu_limit: "1.0" # CPU core limit (e.g., 0.5, 1.0)
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = destFile.Close() }() 
 
-database:
-  db_name: "postgres" # Target database name
-  user: "admin" # Database administrative user
-  password: "very_secret_password" # Administrative password
-  extensions: # List of required PostgreSQL extensions
-    - "uuid-ossp"
-    - "pg_trgm"
-  roles: # Roles to be created before restoration
-    - "postgres"
-    - "warehouse_analyst"
-    - "warehouse_app_user"
+	_, err = io.Copy(destFile, sourceFile)
+	if err != nil {
+		return err
+	}
 
-  settings: # Custom postgresql.conf parameters (via -c flags)
-    max_connections: "50" # Maximum concurrent connections
-    shared_buffers: "128MB" # Memory for caching data
-    fsync: "off" # Disables disk sync for faster testing (unsafe for prod)
-
-restore:
-  parallel_jobs: 1 # Number of threads for pg_restore
-  analyze: true # Run ANALYZE to update statistics after restore
-  on_error_stop: true # Halt if an error occurs
-  single_transaction: false # Use a single transaction for the whole restore
-  no_owner: true # Skip restoration of object ownership
-  no_privileges: true # Skip restoration of access privileges (GRANT/REVOKE)
-  show_restore_logs: false # Print verbose logs from restore utilities
-  show_db_info: true # Display database summary after restore
-  show_success_tests: false # Only show failed assertions in the report
-
-# Logical validation checks (Commented out by default)
-# asserts:
-#   tables:
-#     - name: "users"
-#       metrics:
-#         - type: "row_count"
-#           condition: "gt"
-#           expected: 100
-`
+	return destFile.Sync()
+}

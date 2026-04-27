@@ -25,8 +25,7 @@ type Config struct {
 }
 
 type Docker struct {
-	Image string `yaml:"image" env:"DOCKER_IMAGE" env-default:"postgres:17-alpine"`
-	// TODO: Just always generate UUID for random name?
+	Image         string `yaml:"image" env:"DOCKER_IMAGE" env-default:"postgres:17-alpine"`
 	ContainerName string `yaml:"container_name" env:"CONTAINER_NAME" env-default:"restore-assert-pg"`
 	MemoryLimit   string `yaml:"memory_limit" env-default:"1GB"`
 	AutoRemove    bool   `yaml:"auto_remove" env-default:"true"`
@@ -39,21 +38,20 @@ type Database struct {
 	Password   string            `yaml:"password" env-default:"postgres"`
 	Extensions []string          `yaml:"extensions"`
 	Roles      []string          `yaml:"roles"`
-	ConfigFile string            `yaml:"config_file"` // ПУТЬ ДО ФАЙЛА (НЕОБЯЗАТЕЛЬНО)
-	Settings   map[string]string `yaml:"settings"`    // INLINE-НАСТРОЙКИ (FALLBACK)
+	Settings   map[string]string `yaml:"settings"`
 }
 
 type Restore struct {
-	Analyze           bool `yaml:"analyze" env-default:"true"`
+	Analyze           bool `yaml:"analyze"`
 	OnErrorStop       bool `yaml:"on_error_stop"`
 	SingleTransaction bool `yaml:"single_transaction"`
 	ParallelJobs      int  `yaml:"parallel_jobs" env-default:"1"`
 	NoOwner           bool `yaml:"no_owner"`
 	NoPrivileges      bool `yaml:"no_privileges"`
 	ModifyTemplate    bool `yaml:"modify_template"`
-	ShowRestoreLogs   bool `yaml:"full_restore_logs" env-default:"false"`
-	ShowDatabaseInfo  bool `yaml:"show_db_info" env-default:"false"`
-	ShowSuccessTests  bool `yaml:"hide_success_tests" env-default:"false"`
+	ShowRestoreLogs   bool `yaml:"show_restore_logs"`
+	ShowDatabaseInfo  bool `yaml:"show_db_info"`
+	ShowSuccessTests  bool `yaml:"show_success_tests"`
 }
 
 type Asserts struct {

@@ -27,7 +27,7 @@ func New(ctx context.Context, connString string) (*Repository, error) {
 	return &Repository{pool: pool}, nil
 }
 
-// EnsureRoles проверяет наличие ролей и создает отсутствующие.
+// EnsureRoles checks for the existence of roles and creates any that are missing
 func (r *Repository) EnsureRoles(ctx context.Context, roles []string) error {
 	for _, role := range roles {
 		query := fmt.Sprintf(`
@@ -45,7 +45,7 @@ func (r *Repository) EnsureRoles(ctx context.Context, roles []string) error {
 	return nil
 }
 
-// EnsureExtensions гарантирует наличие расширений для ЛЮБЫХ типов дампов
+// EnsureExtensions guarantees the availability of extensions for ANY type of dump
 func (r *Repository) EnsureExtensions(ctx context.Context, extensions []string, modifyTemplate bool) error {
 	if len(extensions) == 0 {
 		return nil
@@ -98,13 +98,12 @@ func (r *Repository) Analyze(ctx context.Context) error {
 	return nil
 }
 
+// GetSimpleClusterReport provides information about the database cluster
 func (r *Repository) GetSimpleClusterReport(ctx context.Context) (*formatter.ClusterSnapshot, error) {
 	cluster := &formatter.ClusterSnapshot{}
 
-	// 1. Версия
 	_ = r.pool.QueryRow(ctx, "SELECT version()").Scan(&cluster.Version)
 
-	// 2. Роли (все, кроме системных)
 	roleRows, _ := r.pool.Query(ctx, "SELECT rolname FROM pg_roles WHERE rolname NOT LIKE 'pg_%'")
 	for roleRows.Next() {
 		var name string
@@ -113,7 +112,6 @@ func (r *Repository) GetSimpleClusterReport(ctx context.Context) (*formatter.Clu
 	}
 	roleRows.Close()
 
-	// 3. Список баз (исключаем шаблоны)
 	var dbNames []string
 	dbRows, _ := r.pool.Query(ctx, "SELECT datname FROM pg_database WHERE datistemplate = false")
 	for dbRows.Next() {
@@ -123,11 +121,9 @@ func (r *Repository) GetSimpleClusterReport(ctx context.Context) (*formatter.Clu
 	}
 	dbRows.Close()
 
-	// 4. Сбор таблиц по каждой базе
 	for _, dbName := range dbNames {
 		dbSnap, err := r.getTablesForDB(ctx, dbName)
 		if err != nil {
-			// Если база закрыта или нет прав — просто идем дальше
 			continue
 		}
 		cluster.Databases = append(cluster.Databases, *dbSnap)
@@ -136,8 +132,8 @@ func (r *Repository) GetSimpleClusterReport(ctx context.Context) (*formatter.Clu
 	return cluster, nil
 }
 
+// GetTablesForDB provides information about database tables
 func (r *Repository) getTablesForDB(ctx context.Context, dbName string) (*formatter.DatabaseSnapshot, error) {
-	// Создаем новое временное подключение к конкретной БД
 	cfg := r.pool.Config().ConnConfig.Copy()
 	cfg.Database = dbName
 	conn, err := pgx.ConnectConfig(ctx, cfg)
@@ -175,6 +171,7 @@ func (r *Repository) getTablesForDB(ctx context.Context, dbName string) (*format
 	return snap, nil
 }
 
+// ExecuteQuery processes the requests submitted to it
 func (r *Repository) ExecuteQuery(ctx context.Context, query string) (string, error) {
 	var result string
 
@@ -186,6 +183,7 @@ func (r *Repository) ExecuteQuery(ctx context.Context, query string) (string, er
 	return result, nil
 }
 
+// Close closes the connection to the database
 func (r *Repository) Close() {
 	if r.pool != nil {
 		r.pool.Close()
