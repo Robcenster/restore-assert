@@ -1,13 +1,15 @@
 package cli
 
 import (
+	_ "embed"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 
+	restoreassert "github.com/Robcenster/restore-assert"
 	"github.com/spf13/cobra"
 )
+
 
 func NewInitCmd() *cobra.Command {
 	var fileName string
@@ -17,29 +19,28 @@ func NewInitCmd() *cobra.Command {
 		Use:   "init",
 		Short: "Initialize a new config by copying the template",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			srcPath := filepath.Join("config", "template", "restore-config.yaml")
-
+			// 1. Проверяем расширение
 			ext := filepath.Ext(fileName)
 			if ext != ".yaml" && ext != ".yml" {
 				return fmt.Errorf("invalid file extension '%s': only .yaml is allowed", ext)
 			}
 
+			// 2. Формируем путь назначения относительно места запуска команды (CWD)
 			dstPath := filepath.Join(filePath, fileName)
 
-			if _, err := os.Stat(srcPath); os.IsNotExist(err) {
-				return fmt.Errorf("template file not found at %s. Please ensure it exists", srcPath)
-			}
-
+			// 3. Проверяем, не существует ли уже конфиг, чтобы случайно его не затереть
 			if _, err := os.Stat(dstPath); err == nil {
 				return fmt.Errorf("config file '%s' already exists", dstPath)
 			}
 
+			// 4. Создаем целевую директорию (если пользователь указал кастомный путь)
 			if err := os.MkdirAll(filePath, 0755); err != nil {
 				return fmt.Errorf("failed to create directory '%s': %w", filePath, err)
 			}
 
-			if err := copyFile(srcPath, dstPath); err != nil {
-				return fmt.Errorf("failed to copy template: %w", err)
+			// 5. Записываем встроенные в .exe байты шаблона в файл на диске
+			if err := os.WriteFile(dstPath, restoreassert.DefaultTemplate, 0644); err != nil {
+				return fmt.Errorf("failed to write config file: %w", err)
 			}
 
 			fmt.Printf("Successfully initialized config: %s\n", dstPath)
@@ -47,30 +48,9 @@ func NewInitCmd() *cobra.Command {
 		},
 	}
 
+	// Флаги остаются прежними
 	cmd.Flags().StringVarP(&fileName, "name", "n", "restore-config.yaml", "Name of the configuration file")
 	cmd.Flags().StringVarP(&filePath, "path", "p", "config", "Directory path where the config will be created")
 
 	return cmd
-}
-
-// A utility function for copying a file
-func copyFile(src, dst string) error {
-	sourceFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = sourceFile.Close() }() 
-
-	destFile, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = destFile.Close() }() 
-
-	_, err = io.Copy(destFile, sourceFile)
-	if err != nil {
-		return err
-	}
-
-	return destFile.Sync()
 }

@@ -22,8 +22,8 @@ go install github.com/Robcenster/restore-assert@latest
 ```
 
 ## 🚀 Quick Start
+<img src="docs/demo.gif" alt="Restore-assert cli usage demonstration" width="50%">
 
-![Restore-Assert Demo](https://raw.githubusercontent.com/Robcenster/restore-assert/main/assets/demo.gif)
 
 #### 1. Initialization
 Create a configuration file template in the current folder:
