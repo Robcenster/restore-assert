@@ -22,7 +22,7 @@ go install github.com/Robcenster/restore-assert@latest
 ```
 
 ## 🚀 Quick Start
-<img src="docs/demo.gif" alt="Restore-assert cli usage demonstration" width="50%">
+<img src="docs/demo.gif" alt="Restore-assert cli usage demonstration" width="100%">
 
 
 #### 1. Initialization
