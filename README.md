@@ -28,15 +28,9 @@ go install github.com/Robcenster/restore-assert@latest
 #### 1. Initialization
 Create a configuration file template in the current folder:
 ```bash
-restore-assert init
+restore-assert init --name "configname.yaml" --path .
 ```
-#### 2. Backup Inspection (Optional)
-View the tree of tables, roles, and extensions inside the dump without running checks:
-```bash
-restore-assert inspect ./backup.sql
-```
-
-#### 3. Run Burn-test
+#### 2. Run Burn-test
 Launch the full cycle: container creation -> restoration -> assertion execution:
 ```bash
 restore-assert check ./prod_backup.sql --config restore-config.yaml
@@ -53,7 +47,8 @@ restore-assert check ./prod_backup.sql --config restore-config.yaml
 │   ├── repository/     # SQL queries for the restored DB
 │   ├── verifier/       # Assertion execution engine
 │   └── formatter/      # Report and DB tree visualization
-└── restore-config.yaml # Configuration file
+└── config/
+    └── template/       # Configuration file templates
 ```
 
 ## FAQ (Frequently Asked Questions)
@@ -88,6 +83,11 @@ It depends on your backup size and hardware. For a 1GB dump, it usually takes 1-
 Yes! Since it uses Docker, you just need a runner with Docker-in-Docker (DinD) support. It's a perfect way to verify your backups daily.
 </details>
 
+<details>
+<summary><b>Why does the program exit with code 1 (os.Exit(1)) if anything fails?</b></summary>
+
+This is an intentional characteristic of the program's logic. If absolutely anything fails during the restoration process or the subsequent logical checks (including the assertions themselves), the entire backup verification is considered unsuccessful, and the program will terminate with `os.Exit(1)`. Knowing this beforehand prevents initial confusion: any single failure means the recovery test has failed.
+</details>
 
 ##  Troubleshooting
 
@@ -138,6 +138,13 @@ Common issues and how to fix them:
 * **Fix:** Ensure `database.db_name` is unique OR change dump settings for not creating database.
 </details>
 
+<details>
+<summary><code>assertions execute incorrectly during multi-database or cluster restoration</code></summary>
+
+* **Reason:** Assertions connect to only a single database context. If your backup contains multiple databases (e.g., when restoring from a cluster dump), there is a high probability that the asserts will be executed incorrectly.
+* **Fix:** It is highly recommended to use a single database for asserts. If an empty database is created at the beginning of the restoration process to serve as an entry point, it should not cause any issues.
+</details>
+
 ### Tool Errors
 
 <details>
@@ -145,6 +152,13 @@ Common issues and how to fix them:
 
 * **Reason:** The file is corrupted or in a format the tool doesn't recognize yet.
 * **Fix:** Run `file your_backup.sql` to check the actual type. Ensure it's a valid `pg_dump` output (Plain, Custom, or Tar). If so, you can create issue to discuss.
+</details>
+
+<details>
+<summary><code>could not be restored due to an extension error</code></summary>
+
+* **Reason:** Restoring multiple databases at the same time may cause errors when installing PostgreSQL extensions.
+* **Fix:** Enable the `modify_template` variable to replace `template0` during the process. However, for optimal stability and test accuracy, it is recommended to restore databases individually.
 </details>
 
 ##
